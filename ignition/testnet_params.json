@@ -1,4 +1,14 @@
 {
+  "ApostlesModule": {
+    "name": "Abyss",
+    "symbol": "ABYSS",
+    "description": "",
+    "royaltyRecipient": "",
+    "royaltiesBasisPoints": 500,
+    "ownerAddress": "",
+    "adminAddress": "",
+    "contractURI": "{}"
+  },
   "SoulboundModule": {
     "name": "SoulNFT",
     "symbol": "SNFT",

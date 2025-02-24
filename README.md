@@ -1,8 +1,13 @@
 # temple-contracts
 
 This repo has the following contracts:
+- Apostles NFT contract
 - SoulboundNFT contract to enable minting Abyss tokens
 - Abyss NFT contract to allow users to mint and generate AI images
+
+## Apostles NFT
+This is a custom NFT token for a limited number of users. The tokens can ony be minted by an authorized minter wallet.
+This is kiind of like a limited edition NFT for a one-off campaign.
 
 ## SoulboundNFT 
 This is a simple non-transferable NFT bound to a wallet. It represents a user character and is a requirement 

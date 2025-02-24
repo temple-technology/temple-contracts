@@ -10,6 +10,7 @@ import { exit } from "process";
 require("dotenv").config();
 
 type DeploymentConfig = {
+    apostles: boolean,
     abyss: boolean
 }
 
@@ -21,12 +22,19 @@ async function runDeployments(config: DeploymentConfig) {
     if (params === undefined) {
         return false;
     }
-    if (!(config.token || config.staking || config.apostles || config.abyss)) {
+    if (!(config.apostles || config.abyss)) {
         console.log(`Nothing to deploy, all the deployment modules are set to false in the config file.`);
         return false;
     }
 
     // Execute the deployments
+    if (config.apostles) {
+        const { apostlesNFT } = await hre.ignition.deploy(ApostlesModule, {
+            parameters: { "ApostlesModule": params.ApostlesModule}
+        });
+        console.debug(`  Deployed Apostles: ${apostlesNFT.address}`);
+    }
+
     if (config.abyss) {
         // SoulboundNFT is deployed as part of the Abyss deployment
         const { abyss, proxy, proxyAdmin, soulNFT } = await hre.ignition.deploy(AbyssModule, { 

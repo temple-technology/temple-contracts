@@ -2,6 +2,17 @@ import * as fs from "fs";
 import * as path from "path";
 require("dotenv").config();
 
+type ApostlesParams = {
+    name: string;
+    symbol: string;
+    description: string;
+    royaltyRecipient: string;
+    royaltiesBasisPoints: number;
+    ownerAddress: string;
+    adminAddress: string;
+    contractURI: string;
+}
+
 type SoulboundParams = {
     name: string;
     symbol: string;
@@ -21,12 +32,13 @@ type AbyssProxyParams = {
     baseURI: string;
     proxyAdminOwner: string;
 }
-  
+
 type DeploymentParams = {
+    ApostlesModule: ApostlesParams;
     SoulboundModule: SoulboundParams;
     AbyssProxyModule: AbyssProxyParams;
 }
-  
+
 export function readDeploymentParams(chainId: number | undefined) :DeploymentParams | undefined {
     const ignitionDir = path.join(__dirname, "../ignition/");
 

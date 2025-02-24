@@ -28,6 +28,7 @@ Please read the following sections before running the deployment script.
 This is a json file with the following schema:
 ```json
 {
+    "apostles": true,
     "abyss": true
 }
 ```
