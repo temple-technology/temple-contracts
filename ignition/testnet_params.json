@@ -1,0 +1,20 @@
+{
+  "SoulboundModule": {
+    "name": "SoulNFT",
+    "symbol": "SNFT",
+    "ownerAddress": "",
+    "baseURI": "templetechnology.xyz/token/soulbound/"
+  },
+  "AbyssProxyModule": {
+    "name": "Abyss",
+    "symbol": "ABYSS",
+    "royaltyRecipient": "",
+    "royaltiesBasisPoints": 500,
+    "ownerAddress": "",
+    "adminAddress": "",
+    "resetterAddress": "",
+    "contractURI": "{}",
+    "baseURI": "templetechnology.xyz/token/abyss/",
+    "proxyAdminOwner": ""
+  }
+}

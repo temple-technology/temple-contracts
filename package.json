@@ -1,0 +1,35 @@
+{
+  "name": "hardhat-project",
+  "scripts": {
+    "prettier": "prettier --write --plugin=prettier-plugin-solidity 'contracts/**/*.sol'",
+    "lint": "prettier --list-different --plugin=prettier-plugin-solidity 'contracts/**/*.sol'",
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "verify-testnet": "hardhat ignition verify chain-421614 --include-unrelated-contracts",
+    "verify-mainnet": "hardhat ignition verify chain-42161 --include-unrelated-contracts",
+    "upgrade-abyss-sepolia": "hardhat run scripts/upgradeAbyss.ts --network sepolia",
+    "upgrade-abyss-testnet": "hardhat run scripts/upgradeAbyss.ts --network arbitrumSepolia",
+    "upgrade-abyss-mainnet": "hardhat run scripts/upgradeAbyss.ts --network arbitrum",
+    "deploy-local": "hardhat run scripts/deploy.ts --network localhost ",
+    "deploy-testnet": "hardhat run scripts/deploy.ts --network arbitrumSepolia ",
+    "deploy-sepolia": "hardhat run scripts/deploy.ts --network sepolia ",
+    "deploy-mainnet": "hardhat run scripts/deploy.ts --network arbitrum "
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@nomicfoundation/hardhat-toolbox-viem": "^3.0.0",
+    "@nomicfoundation/hardhat-network-helpers": "1.0.12",
+    "hardhat-chai-matchers-viem": "2.0.8",
+    "hardhat": "^2.22.16",
+    "prettier": "^3.3.3",
+    "prettier-plugin-solidity": "^1.4.1",
+    "@openzeppelin/merkle-tree": "",
+    "dotenv": "",
+    "ts-node": "",
+    "@safe-global/sdk-starter-kit": "^1.1.2"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.1.0",
+    "@openzeppelin/contracts-upgradeable": "5.1.0"
+  }
+}
