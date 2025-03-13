@@ -3,9 +3,9 @@ import {
     http, 
     createPublicClient, 
     createWalletClient, 
-    getContract } from 'viem'
+    parseEventLogs} from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { arbitrumSepolia, hardhat } from 'viem/chains'
+import { hardhat } from 'viem/chains'
 import fs from "fs";
 import 'dotenv/config'
 
@@ -35,7 +35,6 @@ const walletClient = createWalletClient({
 });
 
 const action = 1;
-const scenario = 254;
 
 async function mintAbyssToken() {
     try {      
@@ -48,10 +47,33 @@ async function mintAbyssToken() {
         });
         console.log('Transaction sent:', hash);
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        console.log('"mint" transaction confirmed in block', receipt.blockNumber);
+        const logs = parseEventLogs({abi, eventName: "Reroll", logs: receipt.logs});
+        const { tokenId } = logs[0].args;
+  
+        return tokenId;
+    } catch (error) {
+        console.error('Error executing multicall:', error);
+    }
+}
+
+async function mintAndRerollToken() {
+    const tokenId = await mintAbyssToken();
+
+    try {      
+        const hash = await walletClient.writeContract({
+            address: abyssAddress,
+            abi: abi,
+            functionName: 'reroll',
+            args: [tokenId],
+            account,
+        });
+        console.log('"reroll" transaction sent:', hash);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
         console.log('Transaction confirmed in block', receipt.blockNumber);
     } catch (error) {
         console.error('Error executing multicall:', error);
     }
-  }
+}
 
-  mintAbyssToken();
+mintAndRerollToken();
