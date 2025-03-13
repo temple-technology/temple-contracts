@@ -1,8 +1,6 @@
 import hre from "hardhat";
 import AbyssModule from "../ignition/modules/Abyss";
 import ApostlesModule from "../ignition/modules/Apostles";
-import TokenModule from "../ignition/modules/TasteToken";
-import StakingModule from "../ignition/modules/StakingNFT";
 import * as fs from "fs";
 import * as path from "path";
 import { readDeploymentParams } from "../utils/params";

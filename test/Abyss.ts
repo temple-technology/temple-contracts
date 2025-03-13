@@ -22,8 +22,7 @@ describe("Abyss", function () {
             resetterAddress: resetter.account.address,
             contractURI: "{}",
             baseURI: "templetechnology.xyz/token/",
-            proxyAdminOwner: deployer.account.address,
-            // soulboundNFT: soulboundNFT.address
+            proxyAdminOwner: deployer.account.address
           }
         }
       }
@@ -335,6 +334,53 @@ describe("Abyss", function () {
     // Verify remaining balance
     const contractBalanceAfter = await publicClient.getBalance({ address: contract.address });
     expect(contractBalanceAfter).to.equal(newMintFee - withdrawalAmount);
+  });
+
+  it("Should reroll with the required reroll fee", async function () {
+    const { contract, admin, user1, user2, resetter } = await loadFixture(deployContracts);
+
+    // Mint a token and Verify the emitted event
+    const action = 1;
+    const tokenId = BigInt(1); // First token ID
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+
+    // reroll in same epoch without fee 
+    await expect(contract.write.reroll([tokenId], { account: user1.account }))
+      .to.emit(contract, "Reroll")
+      .withArgs(tokenId, checksumAddress(user1.account.address), 1);
+
+    // reroll again in the same epoch
+    await expect(contract.write.reroll([tokenId], { account: user1.account }))
+      .to.emit(contract, "Reroll")
+      .withArgs(tokenId, checksumAddress(user1.account.address), 1);
+
+    // update reroll fee
+    const newRerollFee = parseUnits("0.00035", 18);
+    await contract.write.setRerollFee([newRerollFee], { account: admin.account });
+    
+    // reroll without fee should fail
+    await expect(contract.write.reroll([tokenId], { account: user1.account }))
+      .to.be.revertedWithCustomError( {abi: contract.abi}, "RerollFeeRequired");
+    await expect(contract.write.reroll([tokenId], { account: user1.account, value: parseUnits("0.00031", 18) }))
+      .to.be.revertedWithCustomError( {abi: contract.abi}, "RerollFeeRequired");
+
+    // reroll with the required fee should succeed
+    await expect(contract.write.reroll([tokenId], { account: user1.account, value: newRerollFee }))
+      .to.emit(contract, "Reroll")
+      .withArgs(tokenId, checksumAddress(user1.account.address), 1);
+
+    // reroll submitted from non-token-owner account should fail
+    await expect(contract.write.reroll([tokenId], { account: user2.account, value: newRerollFee }))
+      .to.be.revertedWithCustomError( {abi: contract.abi}, "Unauthorized");
+
+    // Reset the epoch
+    await contract.write.resetEpoch(["second epoch"], { account: resetter.account });
+
+    // reroll in future epochs should succeed 
+    await expect(contract.write.reroll([tokenId], { account: user1.account, value: newRerollFee }))
+      .to.emit(contract, "Reroll")
+      .withArgs(tokenId, checksumAddress(user1.account.address), 2);
+
   });
 
 });
