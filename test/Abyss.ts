@@ -22,8 +22,7 @@ describe("Abyss", function () {
             resetterAddress: resetter.account.address,
             contractURI: "{}",
             baseURI: "templetechnology.xyz/token/",
-            proxyAdminOwner: deployer.account.address,
-            // soulboundNFT: soulboundNFT.address
+            proxyAdminOwner: deployer.account.address
           }
         }
       }
@@ -31,7 +30,7 @@ describe("Abyss", function () {
     const contract = deployment.abyss;
     const soulboundNFT = deployment.soulNFT;
     await soulboundNFT.write.mint({account: user1.account});
-
+    
     return { contract, soulboundNFT, deployer, admin, user1, user2, resetter, publicClient };
   }
   
@@ -75,7 +74,7 @@ describe("Abyss", function () {
     // Verify the emitted event
     await expect(contract.write.mint([action], { account: user1.account }))
       .to.emit(contract, "NFTMinted")
-      .withArgs(action, checksumAddress(user1.account.address), tokenId, 1);
+      .withArgs(action, checksumAddress(user1.account.address), tokenId, 1, 0);
 
     // Verify token ownership
     const owner = await contract.read.ownerOf([BigInt(tokenId)]);
@@ -97,7 +96,7 @@ describe("Abyss", function () {
     // now minting Abyss should succeed
     await expect(contract.write.mint([action], { account: user2.account }))
       .to.emit(contract, "NFTMinted")
-      .withArgs(action, checksumAddress(user2.account.address), tokenId, 1);
+      .withArgs(action, checksumAddress(user2.account.address), tokenId, 1, 0);
 
     // Verify token ownership
     const owner = await contract.read.ownerOf([BigInt(tokenId)]);
@@ -121,7 +120,7 @@ describe("Abyss", function () {
     const tokenId = 2; // Second token ID
     await expect(contract.write.mint([action], { account: user1.account }))
       .to.emit(contract, "NFTMinted")
-      .withArgs(action, checksumAddress(user1.account.address), tokenId, 2);
+      .withArgs(action, checksumAddress(user1.account.address), tokenId, 2, 0);
   });
 
   it("Should handle pausing and unpausing minting", async function () {
@@ -144,7 +143,7 @@ describe("Abyss", function () {
     // Mint after unpausing
     await expect(contract.write.mint([1], { account: user1.account }))
       .to.emit(contract, "NFTMinted")
-      .withArgs(1,  checksumAddress(user1.account.address), 1, 1);
+      .withArgs(1,  checksumAddress(user1.account.address), 1, 1, 0);
   });
 
   it("Should allow epoch resetter to reset the epoch and emit correct values", async function () {
@@ -240,7 +239,7 @@ describe("Abyss", function () {
     const epoch = 2;
     await expect(contract.write.mint([action], { account: user1.account }))
       .to.emit(contract, "NFTMinted")
-      .withArgs(action, checksumAddress(user1.account.address), tokenId, epoch);
+      .withArgs(action, checksumAddress(user1.account.address), tokenId, epoch, 0);
   });
   
   it("should allow the admin to update the mint fee", async function () {
@@ -268,7 +267,7 @@ describe("Abyss", function () {
     const tokenId = 1; // First token ID
     await expect(contract.write.mint([action], { account: user1.account, value: newMintFee}))
       .to.emit(contract, "NFTMinted")
-      .withArgs(action, checksumAddress(user1.account.address), tokenId, 1);
+      .withArgs(action, checksumAddress(user1.account.address), tokenId, 1, newMintFee);
 
     // Verify token ownership
     const owner = await contract.read.ownerOf([BigInt(tokenId)]);
@@ -318,7 +317,7 @@ describe("Abyss", function () {
     // User mints an NFT, sending ETH to the contract
     await expect(contract.write.mint([1], { account: user1.account, value: newMintFee }))
         .to.emit(contract, "NFTMinted")
-        .withArgs(1, checksumAddress(user1.account.address), 1, 1);
+        .withArgs(1, checksumAddress(user1.account.address), 1, 1, newMintFee);
 
     // Get contract balance before withdrawal
     const contractBalanceBefore = await publicClient.getBalance({ address: contract.address });
@@ -335,6 +334,50 @@ describe("Abyss", function () {
     // Verify remaining balance
     const contractBalanceAfter = await publicClient.getBalance({ address: contract.address });
     expect(contractBalanceAfter).to.equal(newMintFee - withdrawalAmount);
+  });
+
+  it("Should mint without fee for whitelisted user", async function () {
+    const { contract, admin, user1, user2, resetter } = await loadFixture(deployContracts);
+
+    const root: `0x${string}` = "0x";
+    const newMintFee = parseUnits("0.00035", 18);
+    await contract.write.setMintFee([newMintFee], { account: admin.account });
+    await contract.write.setMerkleRoot([root], { account: admin.account })
+
+    // Mint a token
+    const action = 1;
+    const proof: `0x${string}`[] = [];
+
+    // Mint using the whitelisted method with merkle proof
+    const tokenId = 1; // First token ID
+    await expect(contract.write.mint([action, proof], { account: user1.account}))
+      .to.emit(contract, "NFTMinted")
+      .withArgs(action, checksumAddress(user1.account.address), tokenId, 1, 0);
+
+    // mint with proof should fail for the wrong wallet
+    await expect(contract.write.mint([action, proof], { account: user2.account}))
+      .to.be.revertedWithCustomError({abi: contract.abi}, "InvalidProof");
+
+    // check remaining free mints
+    let freeMint = await contract.read.hasRemainingFreeMints([user1.account.address, proof]);
+    expect(freeMint).to.equal(true);
+
+    for (let i = 0; i < 4; i++) {
+        await contract.write.resetEpoch([`${i+2}`], { account: resetter.account });
+        await contract.write.mint([action, proof], { account: user1.account})
+    }
+    freeMint = await contract.read.hasRemainingFreeMints([user1.account.address, proof]);
+    expect(freeMint).to.equal(false);
+    
+    // free mint should fail now
+    await expect(contract.write.mint([action, proof], { account: user1.account}))
+      .to.be.revertedWithCustomError({abi: contract.abi}, "FreeMintsExceeded");
+
+    // mint with fee should work for this user
+    await expect(contract.write.mint([action], { account: user1.account, value: newMintFee }))
+      .to.emit(contract, "NFTMinted")
+      .withArgs(action, checksumAddress(user1.account.address), 6, 1, newMintFee);
+
   });
 
 });
