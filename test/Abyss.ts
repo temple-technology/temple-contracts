@@ -33,7 +33,7 @@ describe("Abyss", function () {
     
     return { contract, soulboundNFT, deployer, admin, user1, user2, resetter, publicClient };
   }
-  
+
   it("Should deploy the contract with correct initial settings", async function () {
     const { contract, deployer } = await loadFixture(deployContracts);
 
@@ -42,12 +42,15 @@ describe("Abyss", function () {
     const initialEpoch = await contract.read.epoch();
     const royaltyRecipient = await contract.read.royaltyRecipient();
     const royaltyBasisPoints = await contract.read.royaltyBasisPoints();
+    const mintFee = parseUnits("0.002", 18);
 
     expect(name).to.equal("Abyss NFT");
     expect(symbol).to.equal("ABYSS");
     expect(initialEpoch).to.equal(1);
     expect(royaltyRecipient).to.equal(checksumAddress(deployer.account.address));
     expect(royaltyBasisPoints).to.equal(500);
+    expect(await contract.read.mintFee()).to.equal(mintFee);
+
   });
 
   it("Should allow updating and reading the contract URI", async function () {
@@ -66,7 +69,8 @@ describe("Abyss", function () {
   });
 
   it("Should emit correct values when minting a token", async function () {
-    const { contract, user1 } = await loadFixture(deployContracts);
+    const { contract, admin, user1 } = await loadFixture(deployContracts);
+    await contract.write.setMintFee([BigInt(0)], { account: admin.account })
 
     // Mint a token
     const action = 1;
@@ -82,7 +86,8 @@ describe("Abyss", function () {
   });
 
   it("Should not allow minting by user without a soulbound NFT.", async function () {
-    const { contract, soulboundNFT, user1, user2 } = await loadFixture(deployContracts);
+    const { contract, soulboundNFT, admin, user1, user2 } = await loadFixture(deployContracts);
+    await contract.write.setMintFee([BigInt(0)], { account: admin.account })
 
     // Mint a token
     const action = 1;
@@ -104,8 +109,9 @@ describe("Abyss", function () {
   });
 
   it("Should revert with AlreadyMintedInCurrentEpoch when minting more than once in the same epoch", async function () {
-    const { contract, user1, resetter } = await loadFixture(deployContracts);
-  
+    const { contract, admin, user1, resetter } = await loadFixture(deployContracts);
+    await contract.write.setMintFee([BigInt(0)], { account: admin.account })
+
     // Mint a token
     const action = 1;
     await contract.write.mint([action], { account: user1.account });
@@ -125,6 +131,7 @@ describe("Abyss", function () {
 
   it("Should handle pausing and unpausing minting", async function () {
     const { contract, admin, user1 } = await loadFixture(deployContracts);
+    await contract.write.setMintFee([BigInt(0)], { account: admin.account })
 
     // Pause the contract
     await expect(contract.write.pause({ account: admin.account }))
@@ -209,8 +216,9 @@ describe("Abyss", function () {
   });
   
   it("Should revert with AlreadyMintedInCurrentEpoch when minting more than once in the same epoch", async function () {
-    const { contract, user1 } = await loadFixture(deployContracts);
-  
+    const { contract, admin, user1 } = await loadFixture(deployContracts);
+    await contract.write.setMintFee([BigInt(0)], { account: admin.account })
+
     // Mint a token
     const action = 1;
     await contract.write.mint([action], { account: user1.account });
@@ -222,7 +230,8 @@ describe("Abyss", function () {
   
   it("Should allow minting again after resetting the epoch", async function () {
     const { contract, admin, user1, resetter } = await loadFixture(deployContracts);
-  
+    await contract.write.setMintFee([BigInt(0)], { account: admin.account })
+
     // Mint a token
     const action = 1;
     await contract.write.mint([action], { account: user1.account });
@@ -343,7 +352,6 @@ describe("Abyss", function () {
     // Mint a token
     const action = 1;
     const proof: `0x${string}`[] = ["0x895fcfca45b761f42d85849ce9d8b111905c7417e64dcc0738a7abbae89ad17e"]
-
 
     // Mint using the whitelisted method with merkle proof
     const tokenId = 1; // First token ID

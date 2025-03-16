@@ -35,7 +35,7 @@ contract Abyss is Initializable,
     string private _contractURI;
     string private _baseTokenURI;
     uint256 public receivedFees;
-    uint256 public mintFee = 2_000_000_000_000_000;
+    uint256 public mintFee;
     uint256 public epoch; // Current epoch for minting
     SoulboundNFT public soulboundNFT;
     mapping(address => uint256) public lastMintEpoch;
@@ -116,6 +116,7 @@ contract Abyss is Initializable,
         royaltyBasisPoints = _royaltyBasisPoints;
         _contractURI = initContractURI;
         _baseTokenURI = baseURI;
+        mintFee = 2_000_000_000_000_000;
         epoch = 1;
 
         _transferOwnership(owner);
