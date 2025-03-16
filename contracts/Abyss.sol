@@ -215,7 +215,7 @@ contract Abyss is Initializable,
     function hasRemainingFreeMints(address user, bytes32[] calldata _proof) external view returns (bool) {
         bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(user))));     
 
-        return MerkleProofLib.verify(_proof, merkleRoot, leaf) && claimedFreeMint[msg.sender] < MAX_FREE_MINTS;
+        return MerkleProofLib.verify(_proof, merkleRoot, leaf) && claimedFreeMint[user] < MAX_FREE_MINTS;
     }
 
     /**

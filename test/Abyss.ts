@@ -280,13 +280,9 @@ describe("Abyss", function () {
     const newMintFee = parseUnits("0.00035", 18);
     await contract.write.setMintFee([newMintFee], { account: admin.account });
 
-    // Mint a token
     const action = 1;
-
-    // Verify the emitted event
-    const tokenId = 1; // First token ID
     await expect(contract.write.mint([action], { account: user1.account, value: parseUnits("0.00030", 18)}))
-      .to.be.revertedWithCustomError( {abi: contract.abi}, "FailedMintRequirements");
+      .to.be.revertedWithCustomError( {abi: contract.abi}, "MintFeeRequired");
 
   });
 
@@ -339,14 +335,15 @@ describe("Abyss", function () {
   it("Should mint without fee for whitelisted user", async function () {
     const { contract, admin, user1, user2, resetter } = await loadFixture(deployContracts);
 
-    const root: `0x${string}` = "0x";
+    const root: `0x${string}` = "0xe5b6e3298144ffbc1521ae5d17fdce81184e774c84119e5d254141bd246c771f";
     const newMintFee = parseUnits("0.00035", 18);
     await contract.write.setMintFee([newMintFee], { account: admin.account });
     await contract.write.setMerkleRoot([root], { account: admin.account })
 
     // Mint a token
     const action = 1;
-    const proof: `0x${string}`[] = [];
+    const proof: `0x${string}`[] = ["0x895fcfca45b761f42d85849ce9d8b111905c7417e64dcc0738a7abbae89ad17e"]
+
 
     // Mint using the whitelisted method with merkle proof
     const tokenId = 1; // First token ID
@@ -368,15 +365,16 @@ describe("Abyss", function () {
     }
     freeMint = await contract.read.hasRemainingFreeMints([user1.account.address, proof]);
     expect(freeMint).to.equal(false);
-    
+
+    await contract.write.resetEpoch([`${6}`], { account: resetter.account });
     // free mint should fail now
     await expect(contract.write.mint([action, proof], { account: user1.account}))
       .to.be.revertedWithCustomError({abi: contract.abi}, "FreeMintsExceeded");
-
+    
     // mint with fee should work for this user
     await expect(contract.write.mint([action], { account: user1.account, value: newMintFee }))
       .to.emit(contract, "NFTMinted")
-      .withArgs(action, checksumAddress(user1.account.address), 6, 1, newMintFee);
+      .withArgs(action, checksumAddress(user1.account.address), 6, 6, newMintFee);
 
   });
 

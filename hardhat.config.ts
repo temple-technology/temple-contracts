@@ -6,6 +6,7 @@ import 'dotenv/config'
 const deployer = process.env.DEPLOYER_PRIVATE_KEY || ""
 const etherscanAPIKey = process.env.ETHERSCAN_API_KEY || ""
 const etherscanArbitrumAPIKey = process.env.ETHERSCAN_ARBITRUM_API_KEY || ""
+const etherscanSonicAPIKey = process.env.ETHERSCAN_SONIC_API_KEY || ""
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -39,13 +40,25 @@ const config: HardhatUserConfig = {
       url: process.env.SEPOLIA_RPC || "",
       accounts: [deployer],
     },
+    sonicBlaze: {
+      chainId: 57054,
+      url: process.env.SONIC_BLAZE_RPC || "https://rpc.blaze.soniclabs.com",
+      accounts: [deployer]
+    },
+    sonic: {
+      chainId: 146,
+      url: process.env.SONIC_RPC || "https://rpc.soniclabs.com",
+      accounts: [deployer]
+    }
   },
   etherscan: {
     apiKey: {
       arbitrumOne: etherscanArbitrumAPIKey,
       arbitrumGoerli: etherscanArbitrumAPIKey,
       arbitrumSepolia: etherscanArbitrumAPIKey,
-      sepolia: etherscanAPIKey
+      sepolia: etherscanAPIKey,
+      sonic: etherscanSonicAPIKey,
+      sonicBlaze: etherscanSonicAPIKey
     },
     customChains: [
       {
@@ -62,6 +75,22 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://api.arbiscan.io/api",
           browserURL: "https://arbiscan.io/",
+        }
+      },
+      {
+        network: "sonicBlaze",
+        chainId: 57054,
+        urls: {
+          apiURL: "https://api-testnet.sonicscan.org/api",
+          browserURL: "https://testnet.sonicscan.org/",
+        }
+      },
+      {
+        network: "sonic",
+        chainId: 146,
+        urls: {
+          apiURL: "https://api.sonicscan.org/api",
+          browserURL: "https://sonicscan.org/",
         }
       }
     ]
