@@ -1,51 +1,25 @@
-import { encodeFunctionData } from "viem";
+import { Chain, createPublicClient, createWalletClient, http } from "viem";
 import hre from "hardhat";
 import UpgradeAbyssModule from "../ignition/modules/AbyssUpgrade";
-import SafeApiKit from '@safe-global/api-kit'
-import Safe from '@safe-global/protocol-kit'
-import {
-  MetaTransactionData,
-  OperationType
-} from '@safe-global/types-kit';
+import { privateKeyToAccount } from "viem/accounts";
+import { arbitrum, arbitrumSepolia, mainnet, sepolia, hardhat } from 'viem/chains'
 
-const submitSafeTx = async (proxyAdminAddress: `0x${string}`, txData: `0x${string}`) => {
-    const safeAddress: `0x${string}` = `0x${(process.env.SAFE_ADDRESS || "").slice(2)}`;
-    const signer: `0x${string}` = `0x${(process.env.DEPLOYER_ADDRESS || "").slice(2)}`;
-    const rpc = process.env.ETHEREUM_RPC || ""
-    
-    const protocolKitOwner1 = await Safe.init({
-        provider: rpc,
-        signer: process.env.DEPLOYER_PRIVATE_KEY,
-        safeAddress: safeAddress,
-      })
-    
-    const safeTransactionData: MetaTransactionData = {
-        to: proxyAdminAddress,
-        value: BigInt(0).toString(),
-        data: txData,
-        operation: OperationType.Call
-    }
-      
-    const safeTransaction = await protocolKitOwner1.createTransaction({
-        transactions: [safeTransactionData]
-    })
-    const chainId = hre.network.config.chainId || 11155111;
-    const apiKit = new SafeApiKit({
-        chainId: BigInt(chainId)
-      })
-    const safeTxHash = await protocolKitOwner1.getTransactionHash(safeTransaction)
-    const senderSignature = await protocolKitOwner1.signHash(safeTxHash)
-    await apiKit.proposeTransaction({
-        safeAddress,
-        safeTransactionData: safeTransaction.data,
-        safeTxHash,
-        senderAddress: signer,
-        senderSignature: senderSignature.data
-      })
+/*
+  Use this script to upgrade the Abyss contract when the ProxyAdmin owner is an EOA wallet.
+  If the owner is a Safe/Multisig wallet use the upgradeAbyssMultisig.ts script.
 
-    console.log(`tx data: ${txData}`);
-    console.log("✅ Safe transaction submitted");
-}
+  Required env vars:
+    DEPLOYER_PRIVATE_KEY
+    PROXY_ADDRESS
+    PROXY_ADMIN_ADDRESS
+
+  Supported chains:
+    sepolia
+    arbitrumSepolia
+    mainnet
+    arbitrum
+
+*/
 
 const upgradeAbyssContract = async () => {
     const { newAbyssImplementation } = await hre.ignition.deploy(UpgradeAbyssModule);
@@ -54,25 +28,63 @@ const upgradeAbyssContract = async () => {
     const proxyAddress: `0x${string}` = `0x${(process.env.PROXY_ADDRESS || "0x").slice(2)}`;
     const proxyAdminAddress: `0x${string}` = `0x${(process.env.PROXY_ADMIN_ADDRESS || "0x").slice(2)}`;
 
-    const upgradeTxData = encodeFunctionData({
-        abi: [
-            {
-                "inputs": [
-                    { "internalType": "address", "name": "proxy", "type": "address" },
-                    { "internalType": "address", "name": "implementation", "type": "address" },
-                    { "internalType": "bytes", "name": "data", "type": "bytes" }
-                ],
-                "name": "upgradeAndCall",
-                "outputs": [],
-                "stateMutability": "nonpayable",
-                "type": "function"
-            }
-        ],
-        functionName: "upgradeAndCall",
-        args: [proxyAddress, newAbyssImplementation.address, "0x"],
+    const abi = [
+        {
+            "inputs": [
+                { "internalType": "address", "name": "proxy", "type": "address" },
+                { "internalType": "address", "name": "implementation", "type": "address" },
+                { "internalType": "bytes", "name": "data", "type": "bytes" }
+            ],
+            "name": "upgradeAndCall",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        }
+    ]
+
+    const k = process.env.DEPLOYER_PRIVATE_KEY;
+    const account = privateKeyToAccount(`0x${k}`);
+    let chainId = hre.network.config.chainId;
+    let chain: Chain | undefined; 
+
+    if (chainId === 11155111) {
+        chain = sepolia;
+    } else if (chainId === 42161) {
+        chain = arbitrum
+    } else if (chainId === 421614) {
+        chain = arbitrumSepolia
+    } else if (chainId === 1) {
+        chain = mainnet
+    } else {
+        chain = hardhat;
+    }
+
+    const publicClient = createPublicClient({
+        chain,
+        transport: http(),
+      }, );
+    const walletClient = createWalletClient({
+        account: account,
+        chain: hardhat,
+        transport: http(),
     });
 
-    return await submitSafeTx(proxyAdminAddress, upgradeTxData);  
+    try {      
+        const hash = await walletClient.writeContract({
+            address: proxyAdminAddress,
+            abi: abi,
+            functionName: 'upgradeAndCall',
+            args: [proxyAddress, newAbyssImplementation.address, "0x"],
+            account,
+        });
+        console.log('Abyss upgrade transaction sent:', hash);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        console.log('Transaction confirmed in block', receipt.blockNumber);
+    } catch (error) {
+        console.error('Error executing multicall:', error);
+    }
+
+    return ;
 }
 
 upgradeAbyssContract().catch(console.error)
