@@ -110,6 +110,7 @@ contract Abyss is Initializable,
 
         if (admin == address(0)) revert InvalidAddress();
         if (epochResetter == address(0)) revert InvalidAddress();
+        if (_royaltyRecipient == address(0)) revert InvalidAddress();
 
         _grantRole(DEFAULT_ADMIN_ROLE, owner);
         _grantRole(ADMIN_ROLE, admin);
