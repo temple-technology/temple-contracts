@@ -10,6 +10,7 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "solady/src/utils/MerkleProofLib.sol";
 
 import "./SoulboundNFT.sol";
@@ -19,7 +20,8 @@ contract Abyss is Initializable,
     AccessControlUpgradeable,
     PausableUpgradeable,
     ERC2981Upgradeable,
-    Ownable2StepUpgradeable
+    Ownable2StepUpgradeable,
+    ReentrancyGuardUpgradeable
 {
     // Roles
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -28,6 +30,7 @@ contract Abyss is Initializable,
     uint256 private constant ACTION_MIN = 1;
     uint256 private constant ACTION_MAX = 3;
     uint256 private constant MAX_FREE_MINTS = 5;
+    uint256 private constant MAX_ROYALTY_BASIS_POINTS = 2000;
 
     /// @dev The Merkle Root
     bytes32 private merkleRoot;
@@ -103,6 +106,7 @@ contract Abyss is Initializable,
         __AccessControl_init();
         __Pausable_init();
         __Ownable2Step_init();
+        __ReentrancyGuard_init();
 
         if (admin == address(0)) revert InvalidAddress();
         if (epochResetter == address(0)) revert InvalidAddress();
@@ -127,7 +131,9 @@ contract Abyss is Initializable,
      * @param uri The new epoch metadata URI.
      */
     function resetEpoch(string memory uri) external onlyRole(EPOCH_RESET_ROLE) {
-        epoch += 1;
+        unchecked {
+            epoch += 1;
+        }
         emit Epoch(epoch, msg.sender, uri, block.timestamp);
     }
 
@@ -154,7 +160,7 @@ contract Abyss is Initializable,
      * @dev Withdraws funds from the contract.
      * @param amount The amount to withdraw.
      */
-    function withdrawFunds(uint256 amount) external onlyRole(ADMIN_ROLE) {
+    function withdrawFunds(uint256 amount) external onlyRole(ADMIN_ROLE) nonReentrant {
         uint256 balance = address(this).balance;
         if (balance < amount) revert InsufficientBalance();
 
@@ -189,7 +195,9 @@ contract Abyss is Initializable,
         if (!MerkleProofLib.verify(_proof, merkleRoot, leaf)) revert InvalidProof();
         if (claimedFreeMint[msg.sender] >= MAX_FREE_MINTS) revert FreeMintsExceeded();
 
-        ++claimedFreeMint[msg.sender];
+        unchecked {
+            ++claimedFreeMint[msg.sender];
+        }
         _mint(action);
     }
 
@@ -277,7 +285,7 @@ contract Abyss is Initializable,
      */
     function setRoyaltyInfo(address _recipient, uint256 _basisPoints) external onlyRole(ADMIN_ROLE) {
         if (_recipient == address(0)) revert InvalidRoyaltyRecipient();
-        if (_basisPoints > 10_000) revert RoyaltyBasisPointsExceedMax();
+        if (_basisPoints > MAX_ROYALTY_BASIS_POINTS) revert RoyaltyBasisPointsExceedMax();
 
         royaltyRecipient = _recipient;
         royaltyBasisPoints = _basisPoints;
