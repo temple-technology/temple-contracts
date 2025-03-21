@@ -7,6 +7,7 @@
     "compile": "hardhat compile",
     "verify-testnet": "hardhat ignition verify chain-57054 --include-unrelated-contracts",
     "verify-mainnet": "hardhat ignition verify chain-146 --include-unrelated-contracts",
+    "verify-sepolia": "hardhat ignition verify chain-11155111 --include-unrelated-contracts",
     "upgrade-abyss-sepolia": "hardhat run scripts/upgradeAbyss.ts --network sepolia",
     "upgrade-abyss-testnet": "hardhat run scripts/upgradeAbyss.ts --network sonicBlaze",
     "upgrade-abyss-testnet-safe": "hardhat run scripts/upgradeAbyssMultisig.ts --network sonicBlaze",
