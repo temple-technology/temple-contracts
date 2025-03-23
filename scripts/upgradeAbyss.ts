@@ -1,8 +1,9 @@
+import { exit } from "process";
 import { Chain, createPublicClient, createWalletClient, http } from "viem";
 import hre from "hardhat";
 import UpgradeAbyssModule from "../ignition/modules/AbyssUpgrade";
 import { privateKeyToAccount } from "viem/accounts";
-import { arbitrum, arbitrumSepolia, mainnet, sepolia, hardhat } from 'viem/chains'
+import { arbitrum, arbitrumSepolia, mainnet, sepolia, hardhat, sonic, sonicBlazeTestnet } from 'viem/chains'
 
 /*
   Use this script to upgrade the Abyss contract when the ProxyAdmin owner is an EOA wallet.
@@ -19,28 +20,83 @@ import { arbitrum, arbitrumSepolia, mainnet, sepolia, hardhat } from 'viem/chain
     mainnet
     arbitrum
 
+  Set this envvar if the new implementation contract is already deployed 
+    (this will skip deploying a new Abyss contract)
+    NEW_ABYSS_IMPLEMENTATION
 */
 
+const ABI = [
+    {
+        "inputs": [
+          {
+            "internalType": "address",
+            "name": "owner",
+            "type": "address"
+          }
+        ],
+        "name": "OwnableInvalidOwner",
+        "type": "error"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "address",
+            "name": "account",
+            "type": "address"
+          }
+        ],
+        "name": "OwnableUnauthorizedAccount",
+        "type": "error"
+      },
+      {
+        "inputs": [],
+        "name": "owner",
+        "outputs": [
+          {
+            "internalType": "address",
+            "name": "",
+            "type": "address"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },      
+    {
+        "inputs": [
+          {
+            "internalType": "contract ITransparentUpgradeableProxy",
+            "name": "proxy",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "implementation",
+            "type": "address"
+          },
+          {
+            "internalType": "bytes",
+            "name": "data",
+            "type": "bytes"
+          }
+        ],
+        "name": "upgradeAndCall",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+      }
+
+]
+
 const upgradeAbyssContract = async () => {
-    const { newAbyssImplementation } = await hre.ignition.deploy(UpgradeAbyssModule);
-    console.log(`deployed Abyss contract: ${newAbyssImplementation.address}`);
+    let newAddress = process.env.NEW_ABYSS_IMPLEMENTATION;
+    if (newAddress === "" || newAddress === undefined) {
+        const { newAbyssImplementation } = await hre.ignition.deploy(UpgradeAbyssModule);
+        console.log(`deployed Abyss contract: ${newAbyssImplementation.address}`);
+        newAddress = newAbyssImplementation.address;
+    }
     
     const proxyAddress: `0x${string}` = `0x${(process.env.PROXY_ADDRESS || "0x").slice(2)}`;
     const proxyAdminAddress: `0x${string}` = `0x${(process.env.PROXY_ADMIN_ADDRESS || "0x").slice(2)}`;
-
-    const abi = [
-        {
-            "inputs": [
-                { "internalType": "address", "name": "proxy", "type": "address" },
-                { "internalType": "address", "name": "implementation", "type": "address" },
-                { "internalType": "bytes", "name": "data", "type": "bytes" }
-            ],
-            "name": "upgradeAndCall",
-            "outputs": [],
-            "stateMutability": "nonpayable",
-            "type": "function"
-        }
-    ]
 
     const k = process.env.DEPLOYER_PRIVATE_KEY;
     const account = privateKeyToAccount(`0x${k}`);
@@ -50,11 +106,15 @@ const upgradeAbyssContract = async () => {
     if (chainId === 11155111) {
         chain = sepolia;
     } else if (chainId === 42161) {
-        chain = arbitrum
+        chain = arbitrum;
     } else if (chainId === 421614) {
-        chain = arbitrumSepolia
+        chain = arbitrumSepolia;
     } else if (chainId === 1) {
-        chain = mainnet
+        chain = mainnet;
+    } else if (chainId === 146) {
+        chain = sonic;
+    } else if (chainId === 57054) {
+        chain = sonicBlazeTestnet;
     } else {
         chain = hardhat;
     }
@@ -65,16 +125,38 @@ const upgradeAbyssContract = async () => {
       }, );
     const walletClient = createWalletClient({
         account: account,
-        chain: hardhat,
+        chain,
         transport: http(),
     });
+
+    console.log(`### upgrading Abyss implementation: ### `);
+    console.log(`  chain: ${chainId}`);
+    console.log(`  proxy owner account: ${account.address}`);
+    console.log(`  ProxyAddress: ${proxyAddress}`);
+    console.log(`  ProxyAdminAddress: ${proxyAdminAddress}`);
+    console.log(`  new Implementation: ${newAddress}`);
+
+    // Check the owner of the ProxyAdmin
+    const owner = await publicClient.readContract({
+        address: proxyAdminAddress,
+        abi: ABI,
+        functionName: "owner",
+        args: []
+    });
+
+    if (owner !== account.address) {
+        console.error(`account is not the proxyAdmin owner, the upgrade will fail:`);
+        console.error(`  upgrade is using this account: ${account.address}`)
+        console.error(`  only this account can perform the upgrade: ${owner}`)
+        exit();
+    }
 
     try {      
         const hash = await walletClient.writeContract({
             address: proxyAdminAddress,
-            abi: abi,
+            abi: ABI,
             functionName: 'upgradeAndCall',
-            args: [proxyAddress, newAbyssImplementation.address, "0x"],
+            args: [proxyAddress, newAddress, "0x"],
             account,
         });
         console.log('Abyss upgrade transaction sent:', hash);

@@ -3,9 +3,10 @@ import {
     http, 
     createPublicClient, 
     createWalletClient, 
-    getContract } from 'viem'
+    getContract, 
+    parseUnits} from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { arbitrumSepolia, hardhat } from 'viem/chains'
+import { arbitrumSepolia, hardhat, sepolia } from 'viem/chains'
 import fs from "fs";
 import 'dotenv/config'
 
@@ -21,21 +22,36 @@ function readJsonFile(_filePath: string): any {
 
 const k = process.env.USER_PRIVATE_KEY
 const account = privateKeyToAccount(`0x${k}`);
-const abyssAddress: `0x${string}` = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
-const abiFile = 'ignition/deployments/chain-31337/artifacts/AbyssModule#Abyss.json';
-const abi = readJsonFile(abiFile).abi;
+const abyssAddress: `0x${string}` = "0x5AD9Bc7018569a437e78275aC4872F3F43032497";
+// const abiFile = 'ignition/deployments/chain-11155111/artifacts/AbyssModule#Abyss.json';
+// const abi = readJsonFile(abiFile).abi;
+const abi = [
+    {
+        "inputs": [
+            {
+            "internalType": "uint8",
+            "name": "action",
+            "type": "uint8"
+            }
+        ],
+        "name": "mint",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    }
+  
+]
 const publicClient = createPublicClient({
-    chain: hardhat,
+    chain: sepolia,
     transport: http(),
   }, );
 const walletClient = createWalletClient({
     account: account,
-    chain: hardhat,
+    chain: sepolia,
     transport: http(),
 });
 
 const action = 1;
-const scenario = 254;
 
 async function mintAbyssToken() {
     try {      
@@ -45,6 +61,7 @@ async function mintAbyssToken() {
             functionName: 'mint',
             args: [action],
             account,
+            value: parseUnits("0.002", 18)
         });
         console.log('Transaction sent:', hash);
         const receipt = await publicClient.waitForTransactionReceipt({ hash });

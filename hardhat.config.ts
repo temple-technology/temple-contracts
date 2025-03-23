@@ -40,7 +40,7 @@ const config: HardhatUserConfig = {
       url: process.env.SEPOLIA_RPC || "",
       accounts: [deployer],
     },
-    sonicBlaze: {
+    sonicBlazeTestnet: {
       chainId: 57054,
       url: process.env.SONIC_BLAZE_RPC || "https://rpc.blaze.soniclabs.com",
       accounts: [deployer]
@@ -58,7 +58,7 @@ const config: HardhatUserConfig = {
       arbitrumSepolia: etherscanArbitrumAPIKey,
       sepolia: etherscanAPIKey,
       sonic: etherscanSonicAPIKey,
-      sonicBlaze: etherscanSonicAPIKey
+      sonicBlazeTestnet: etherscanSonicAPIKey
     },
     customChains: [
       {
@@ -78,7 +78,7 @@ const config: HardhatUserConfig = {
         }
       },
       {
-        network: "sonicBlaze",
+        network: "sonicBlazeTestnet",
         chainId: 57054,
         urls: {
           apiURL: "https://api-testnet.sonicscan.org/api",
