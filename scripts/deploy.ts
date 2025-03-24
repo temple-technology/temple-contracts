@@ -33,10 +33,11 @@ async function runDeployments(config: DeploymentConfig) {
         console.debug(`  Deployed Apostles: ${apostlesNFT.address}`);
     }
 
+    console.log(`deployment using params: ${JSON.stringify(params, undefined, 2)}`);
     if (config.abyss) {
         // SoulboundNFT is deployed as part of the Abyss deployment
         const { abyss, proxy, proxyAdmin, soulNFT } = await hre.ignition.deploy(AbyssModule, { 
-            parameters: { "AbyssProxyModule": params.AbyssProxyModule}
+            parameters: { "AbyssProxyModule": params.AbyssProxyModule, "SoulboundModule": params.SoulboundModule }
         });
         console.debug(`  Deployed Abyss: ${proxy.address}`);
     }

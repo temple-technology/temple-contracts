@@ -23,6 +23,12 @@ describe("Abyss", function () {
             contractURI: "{}",
             baseURI: "templetechnology.xyz/token/",
             proxyAdminOwner: deployer.account.address
+          },
+          "SoulboundModule": {
+            name: "AbyssSoul",
+            symbol: "ABSOUL",
+            ownerAddress:  deployer.account.address,
+            baseURI: ""
           }
         }
       }
