@@ -129,17 +129,28 @@ describe("Abyss", function () {
       .withArgs(action, checksumAddress(user1.account.address), tokenId, 2, 0);
   });
 
-  it("Should handle pausing and unpausing minting", async function () {
-    const { contract, admin, user1 } = await loadFixture(deployContracts);
+  it("Should handle pausing and unpausing minting and transfers", async function () {
+    const { contract, soulboundNFT, admin, user1, user2 } = await loadFixture(deployContracts);
     await contract.write.setMintFee([BigInt(0)], { account: admin.account })
+
+    // initially the contract is Unpaused
+    await expect(contract.write.mint([1], { account: user1.account }))
+      .to.emit(contract, "NFTMinted")
+      .withArgs(1,  checksumAddress(user1.account.address), 1, 1, 0);
 
     // Pause the contract
     await expect(contract.write.pause({ account: admin.account }))
       .to.emit(contract, "Paused")
       .withArgs(checksumAddress(admin.account.address));
+    
+    expect(await contract.read.paused()).to.be.equal(true);
 
     // Attempt to mint while paused
-    await expect(contract.write.mint([1], { account: user1.account }))
+    await expect(contract.write.mint([1], { account: user2.account }))
+      .to.be.revertedWithCustomError({abi: contract.abi}, "EnforcedPause");
+
+    // transfer should be paused as well
+    await expect(contract.write.transferFrom([user1.account.address, user2.account.address, BigInt(1)], { account: user1.account }))
       .to.be.revertedWithCustomError({abi: contract.abi}, "EnforcedPause");
 
     // Unpause the contract
@@ -148,9 +159,17 @@ describe("Abyss", function () {
       .withArgs(checksumAddress(admin.account.address));
 
     // Mint after unpausing
-    await expect(contract.write.mint([1], { account: user1.account }))
+    await soulboundNFT.write.mint({account: user2.account});
+    await expect(contract.write.mint([1], { account: user2.account }))
       .to.emit(contract, "NFTMinted")
-      .withArgs(1,  checksumAddress(user1.account.address), 1, 1, 0);
+      .withArgs(1,  checksumAddress(user2.account.address), 2, 1, 0);
+
+    // transfer should work now
+    await expect(contract.write.transferFrom(
+      [user1.account.address, user2.account.address, BigInt(1)], { account: user1.account }
+    )).to.emit(contract, "Transfer")
+      .withArgs(checksumAddress(user1.account.address), checksumAddress(user2.account.address), 1);
+
   });
 
   it("Should allow epoch resetter to reset the epoch and emit correct values", async function () {
