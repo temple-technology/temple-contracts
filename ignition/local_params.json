@@ -1,0 +1,30 @@
+{
+  "ApostlesModule": {
+    "name": "Abyss",
+    "symbol": "ABYSS",
+    "description": "",
+    "royaltyRecipient": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "royaltiesBasisPoints": 500,
+    "ownerAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "adminAddress": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+    "contractURI": "{}"
+  },
+  "SoulboundModule": {
+    "name": "SoulNFT",
+    "symbol": "SNFT",
+    "ownerAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "baseURI": "templetechnology.xyz/token/soulbound/"
+  },
+  "AbyssProxyModule": {
+    "name": "Abyss",
+    "symbol": "ABYSS",
+    "royaltyRecipient": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "royaltiesBasisPoints": 500,
+    "ownerAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "adminAddress": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+    "resetterAddress": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+    "contractURI": "{}",
+    "baseURI": "templetechnology.xyz/token/abyss/",
+    "proxyAdminOwner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+  }
+}
