@@ -147,7 +147,7 @@ describe("SoulboundNFT", function () {
 
     await expect(contract.write.mint({ account: user2.account }))
         .to.emit(contract, "Minted")
-        .withArgs(checksumAddress(user1.account.address), BigInt(1));
+        .withArgs(checksumAddress(user2.account.address), BigInt(2));
 
   });
 
