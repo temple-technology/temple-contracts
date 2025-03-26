@@ -135,7 +135,7 @@ describe("Abyss", function () {
       .withArgs(action, checksumAddress(user1.account.address), tokenId, 2, 0);
   });
 
-  it("Should handle pausing and unpausing minting and transfers", async function () {
+  it("Should handle pausing and unpausing mint.", async function () {
     const { contract, soulboundNFT, admin, user1, user2 } = await loadFixture(deployContracts);
     await contract.write.setMintFee([BigInt(0)], { account: admin.account })
 
@@ -155,9 +155,10 @@ describe("Abyss", function () {
     await expect(contract.write.mint([1], { account: user2.account }))
       .to.be.revertedWithCustomError({abi: contract.abi}, "EnforcedPause");
 
-    // transfer should be paused as well
+    // transfer should still work while paused 
     await expect(contract.write.transferFrom([user1.account.address, user2.account.address, BigInt(1)], { account: user1.account }))
-      .to.be.revertedWithCustomError({abi: contract.abi}, "EnforcedPause");
+      .to.emit(contract, "Transfer")
+      .withArgs(checksumAddress(user1.account.address), checksumAddress(user2.account.address), 1);
 
     // Unpause the contract
     await expect(contract.write.unpause({ account: admin.account }))
@@ -169,13 +170,6 @@ describe("Abyss", function () {
     await expect(contract.write.mint([1], { account: user2.account }))
       .to.emit(contract, "NFTMinted")
       .withArgs(1,  checksumAddress(user2.account.address), 2, 1, 0);
-
-    // transfer should work now
-    await expect(contract.write.transferFrom(
-      [user1.account.address, user2.account.address, BigInt(1)], { account: user1.account }
-    )).to.emit(contract, "Transfer")
-      .withArgs(checksumAddress(user1.account.address), checksumAddress(user2.account.address), 1);
-
   });
 
   it("Should allow epoch resetter to reset the epoch and emit correct values", async function () {

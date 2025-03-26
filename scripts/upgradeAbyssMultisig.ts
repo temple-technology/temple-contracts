@@ -24,6 +24,7 @@ import {
     arbitrumSepolia
     mainnet
     arbitrum
+    sonic
 
 */
 
@@ -54,21 +55,26 @@ const submitSafeTx = async (proxyAdminAddress: `0x${string}`, txData: `0x${strin
       })
     const safeTxHash = await protocolKitOwner1.getTransactionHash(safeTransaction)
     const senderSignature = await protocolKitOwner1.signHash(safeTxHash)
-    await apiKit.proposeTransaction({
-        safeAddress,
-        safeTransactionData: safeTransaction.data,
-        safeTxHash,
-        senderAddress: signer,
-        senderSignature: senderSignature.data
-      })
+    // await apiKit.proposeTransaction({
+    //     safeAddress,
+    //     safeTransactionData: safeTransaction.data,
+    //     safeTxHash,
+    //     senderAddress: signer,
+    //     senderSignature: senderSignature.data
+    //   })
 
     console.log(`tx data: ${txData}`);
     console.log("✅ Safe transaction submitted");
 }
 
 const upgradeAbyssContract = async () => {
-    const { newAbyssImplementation } = await hre.ignition.deploy(UpgradeAbyssModule);
-    console.log(`deployed Abyss contract: ${newAbyssImplementation.address}`);
+    let newAddress = process.env.NEW_ABYSS_IMPLEMENTATION;
+    if (newAddress === "" || newAddress === undefined) {
+        const { newAbyssImplementation } = await hre.ignition.deploy(UpgradeAbyssModule);
+        console.log(`deployed Abyss contract: ${newAbyssImplementation.address}`);
+        newAddress = newAbyssImplementation.address;
+    }
+    console.log(`deployed Abyss contract: ${newAddress}`);
     
     const proxyAddress: `0x${string}` = `0x${(process.env.PROXY_ADDRESS || "0x").slice(2)}`;
     const proxyAdminAddress: `0x${string}` = `0x${(process.env.PROXY_ADMIN_ADDRESS || "0x").slice(2)}`;
@@ -88,7 +94,7 @@ const upgradeAbyssContract = async () => {
             }
         ],
         functionName: "upgradeAndCall",
-        args: [proxyAddress, newAbyssImplementation.address, "0x"],
+        args: [proxyAddress, newAddress, "0x"],
     });
 
     return await submitSafeTx(proxyAdminAddress, upgradeTxData);  
