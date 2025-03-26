@@ -40,6 +40,8 @@ contract Abyss is Initializable,
     uint256 public receivedFees;
     uint256 public mintFee;
     uint256 public epoch; // Current epoch for minting
+    uint256 private epochStartToken; // 
+    uint256 public epochMintCap = 3333; // Maximum mints per epoch
     SoulboundNFT public soulboundNFT;
     mapping(address => uint256) public lastMintEpoch;
     /// @dev Mapping for already used free mint claims
@@ -71,6 +73,8 @@ contract Abyss is Initializable,
     error MerkleRootNotSet();
     error InvalidProof();
     error FreeMintsExceeded();
+    error EpochMintCapExceeded();
+    error InvalidMintCap();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -123,6 +127,7 @@ contract Abyss is Initializable,
         _baseTokenURI = baseURI;
         mintFee = 2_000_000_000_000_000;
         epoch = 1;
+        epochStartToken = 1;
 
         _transferOwnership(owner);
     }
@@ -135,6 +140,7 @@ contract Abyss is Initializable,
         unchecked {
             epoch += 1;
         }
+        epochStartToken = totalSupply() + 1;
         emit Epoch(epoch, msg.sender, uri, block.timestamp);
     }
 
@@ -212,6 +218,8 @@ contract Abyss is Initializable,
         }
 
         uint256 tokenId = totalSupply() + 1;
+        if (tokenId > (epochStartToken + epochMintCap - 1)) revert EpochMintCapExceeded();
+        
         lastMintEpoch[msg.sender] = epoch;
         _safeMint(msg.sender, tokenId);
 
@@ -220,6 +228,17 @@ contract Abyss is Initializable,
 
     function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address) {
         return super._update(to, tokenId, auth);
+    }
+
+    function setEpochMintCap(uint256 cap) external onlyRole(ADMIN_ROLE) {
+        if (cap < 100 || cap > 100000) revert InvalidMintCap();
+        
+        epochMintCap = cap;
+    }
+
+    function remainingEpochMints() external view returns (uint256) {
+        uint256 mintsThisEpoch =  totalSupply() + 1 - epochStartToken;
+        return epochMintCap - mintsThisEpoch;
     }
 
     function hasRemainingFreeMints(address user, bytes32[] calldata _proof) external view returns (bool) {
