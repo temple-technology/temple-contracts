@@ -218,7 +218,7 @@ contract Abyss is Initializable,
         emit NFTMinted(action, msg.sender, tokenId, epoch, msg.value);
     }
 
-    function _update(address to, uint256 tokenId, address auth) internal virtual override whenNotPaused returns (address) {
+    function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address) {
         return super._update(to, tokenId, auth);
     }
 
@@ -325,6 +325,6 @@ contract Abyss is Initializable,
      * @return The contract version.
      */
     function version() public pure virtual returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 }
