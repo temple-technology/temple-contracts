@@ -31,6 +31,7 @@ contract Abyss is Initializable,
     uint256 private constant ACTION_MAX = 3;
     uint256 private constant MAX_FREE_MINTS = 5;
     uint256 private constant MAX_ROYALTY_BASIS_POINTS = 2000;
+    uint256 private constant MAX_BATCH_SIZE = 100;
 
     /// @dev The Merkle Root
     bytes32 private merkleRoot;
@@ -42,6 +43,7 @@ contract Abyss is Initializable,
     uint256 public epoch; // Current epoch for minting
     SoulboundNFT public soulboundNFT;
     mapping(address => uint256) public lastMintEpoch;
+    mapping(uint256 => uint16) public tokenAura;
     /// @dev Mapping for already used free mint claims
     mapping(address => uint256) private claimedFreeMint;
 
@@ -58,6 +60,7 @@ contract Abyss is Initializable,
     event MintFeeUpdated(uint256 newFee);
     event WithdrawFunds(address indexed owner, uint256 amount);
     event SetMerkleRoot(bytes32 indexed newRoot, bytes32 indexed oldRoot);
+    event SetAura(uint256 indexed tokenId, uint16 aura);
 
     // Errors
     error InvalidAddress();
@@ -71,6 +74,9 @@ contract Abyss is Initializable,
     error MerkleRootNotSet();
     error InvalidProof();
     error FreeMintsExceeded();
+    error InvalidToken();
+    error BatchSizeExceeded();
+    error LengthMismatch();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -216,6 +222,35 @@ contract Abyss is Initializable,
         _safeMint(msg.sender, tokenId);
 
         emit NFTMinted(action, msg.sender, tokenId, epoch, msg.value);
+    }
+
+    function setAura(
+        uint256 _tokenId, 
+        uint16 _aura
+    ) external onlyRole(ADMIN_ROLE) {
+        if (_ownerOf(_tokenId) == address(0)) revert InvalidToken();
+
+        tokenAura[_tokenId] = _aura;
+        emit SetAura(_tokenId, _aura);
+    }
+
+    function batchSetAura(
+        uint256[] calldata tokenIds,
+        uint16[] calldata auras
+    ) external onlyRole(ADMIN_ROLE) {
+        if (tokenIds.length != auras.length) revert LengthMismatch();
+        if (tokenIds.length > MAX_BATCH_SIZE) revert BatchSizeExceeded();
+
+        for (uint256 i = 0; i < tokenIds.length; ++i) {
+            uint256 _tokenId = tokenIds[i];
+            if (_ownerOf(_tokenId) == address(0)) {
+                continue;
+            }
+
+            uint16 _aura = auras[i];
+            tokenAura[_tokenId] = _aura;
+            emit SetAura(_tokenId, _aura);
+        }
     }
 
     function _update(address to, uint256 tokenId, address auth) internal virtual override whenNotPaused returns (address) {

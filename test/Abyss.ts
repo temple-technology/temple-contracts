@@ -1,12 +1,12 @@
 import { expect } from "chai";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
-import { checksumAddress, parseUnits } from "viem";
+import { checksumAddress, parseEventLogs, parseUnits } from "viem";
 import hre from "hardhat";
 import AbyssProxyModule from "../ignition/modules/Abyss";
 
 describe("Abyss", function () {
   async function deployContracts() {
-    const [deployer, admin, user1, user2, resetter] = await hre.viem.getWalletClients();
+    const [deployer, admin, user1, user2, user3, user4, user5, resetter] = await hre.viem.getWalletClients();
     const publicClient = await hre.viem.getPublicClient();
 
     const deployment = await hre.ignition.deploy(AbyssProxyModule,
@@ -37,7 +37,8 @@ describe("Abyss", function () {
     const soulboundNFT = deployment.soulNFT;
     await soulboundNFT.write.mint({account: user1.account});
     
-    return { contract, soulboundNFT, deployer, admin, user1, user2, resetter, publicClient };
+    return { contract, soulboundNFT, deployer, admin, user1, user2, 
+      user3, user4, user5, resetter, publicClient };
   }
 
   it("Should deploy the contract with correct initial settings", async function () {
@@ -408,6 +409,63 @@ describe("Abyss", function () {
     await expect(contract.write.mint([action], { account: user1.account, value: newMintFee }))
       .to.emit(contract, "NFTMinted")
       .withArgs(action, checksumAddress(user1.account.address), 6, 6, newMintFee);
+
+  });
+
+  it("Should update the aura of an existing nft", async () => {
+    
+    const { contract, admin, user1 } = await loadFixture(deployContracts);
+    await contract.write.setMintFee([BigInt(0)], { account: admin.account })
+
+    // Mint a token
+    const action = 1;
+    const tokenId = BigInt(1); // First token ID
+    await contract.write.mint([action], { account: user1.account });
+    // aura should be zero until it is set by admin
+    expect(await contract.read.tokenAura([tokenId])).to.equal(0);
+
+    // update the token's aura 
+    const aura = 77;
+    await expect(contract.write.setAura([tokenId, aura], { account: admin.account }))
+      .to.emit(contract, 'SetAura')
+      .withArgs(tokenId, aura);
+
+    expect(await contract.read.tokenAura([tokenId])).to.equal(aura);
+  });
+
+  it("Should update auras of a batch of tokens", async () => {
+    const { contract, soulboundNFT, publicClient, admin, user1, user2, user3, user4, user5 } = await loadFixture(deployContracts);
+    await contract.write.setMintFee([BigInt(0)], { account: admin.account })
+    // mint soulbound tokens to allow minting the Abyss token
+    await soulboundNFT.write.mint({account: user2.account});
+    await soulboundNFT.write.mint({account: user3.account});
+    await soulboundNFT.write.mint({account: user4.account});
+    await soulboundNFT.write.mint({account: user5.account});
+
+    // Mint some tokens
+    const action = 1;
+    await contract.write.mint([action], { account: user1.account });
+    await contract.write.mint([action], { account: user2.account });
+    await contract.write.mint([action], { account: user3.account });
+    await contract.write.mint([action], { account: user4.account });
+    await contract.write.mint([action], { account: user5.account });
+
+    const tokenIds = [1n, 2n, 3n, 4n, 5n];
+    const auras = [52, 24, 87, 8, 17];
+    // update aura for a batch of tokens
+    const hash = await contract.write.batchSetAura([tokenIds, auras], { account: admin.account });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const logs = parseEventLogs({ abi: contract.abi, eventName: "SetAura", logs: receipt.logs })
+    
+    expect(logs.length).to.equal(tokenIds.length);
+
+    for (let i = 0; i < tokenIds.length; i++) {
+      const a = await contract.read.tokenAura([tokenIds[i]]);
+      expect(a).to.equal(auras[i]);
+
+      expect(logs[i].args.tokenId).to.equal(tokenIds[i]);
+      expect(logs[i].args.aura).to.equal(auras[i]);
+    }
 
   });
 
