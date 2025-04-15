@@ -118,6 +118,39 @@ describe("SoulboundNFT", function () {
       expect(balance).to.equal(0);
   });
 
+  it("should prevent mint/burn when paused", async function () {
+    const { contract, owner, user1, user2, publicClient } = await loadFixture(deployContract);
+    
+    await expect(contract.write.mint({ account: user1.account }))
+        .to.emit(contract, "Minted")
+        .withArgs(checksumAddress(user1.account.address), BigInt(1));
+
+    const balance = await contract.read.balanceOf([user1.account.address]);
+    expect(balance).to.equal(1);
+
+    await expect(contract.write.pause({ account: owner.account }))
+      .to.emit(contract, "Paused")
+      .withArgs(checksumAddress(owner.account.address));
+    expect(await contract.read.paused()).to.be.equal(true);
+
+    await expect(contract.write.mint({ account: user2.account }))
+        .to.be.revertedWithCustomError({abi: contract.abi}, "EnforcedPause");
+
+    await expect(contract.write.burn([BigInt(1)], { account: user1.account }))
+        .to.be.revertedWithCustomError({abi: contract.abi}, "EnforcedPause()");
+
+    // unpause and test mint/burn again
+    await expect(contract.write.unpause({ account: owner.account }))
+      .to.emit(contract, "Unpaused")
+      .withArgs(checksumAddress(owner.account.address));
+    expect(await contract.read.paused()).to.be.equal(false);
+
+    await expect(contract.write.mint({ account: user2.account }))
+        .to.emit(contract, "Minted")
+        .withArgs(checksumAddress(user2.account.address), BigInt(2));
+
+  });
+
   it("should prevent a user from burning another user's token", async function () {
       const { contract, user1, user2, publicClient } = await loadFixture(deployContract);
       

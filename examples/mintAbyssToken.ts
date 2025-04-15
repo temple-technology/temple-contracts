@@ -3,9 +3,11 @@ import {
     http, 
     createPublicClient, 
     createWalletClient, 
+    getContract,
+    parseUnits,
     parseEventLogs} from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { hardhat } from 'viem/chains'
+import { arbitrumSepolia, hardhat, sepolia } from 'viem/chains'
 import fs from "fs";
 import 'dotenv/config'
 
@@ -21,16 +23,32 @@ function readJsonFile(_filePath: string): any {
 
 const k = process.env.USER_PRIVATE_KEY
 const account = privateKeyToAccount(`0x${k}`);
-const abyssAddress: `0x${string}` = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
-const abiFile = 'ignition/deployments/chain-31337/artifacts/AbyssModule#Abyss.json';
-const abi = readJsonFile(abiFile).abi;
+const abyssAddress: `0x${string}` = "0x5AD9Bc7018569a437e78275aC4872F3F43032497";
+// const abiFile = 'ignition/deployments/chain-11155111/artifacts/AbyssModule#Abyss.json';
+// const abi = readJsonFile(abiFile).abi;
+const abi = [
+    {
+        "inputs": [
+            {
+            "internalType": "uint8",
+            "name": "action",
+            "type": "uint8"
+            }
+        ],
+        "name": "mint",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    }
+
+]
 const publicClient = createPublicClient({
-    chain: hardhat,
+    chain: sepolia,
     transport: http(),
   }, );
 const walletClient = createWalletClient({
     account: account,
-    chain: hardhat,
+    chain: sepolia,
     transport: http(),
 });
 
@@ -44,13 +62,14 @@ async function mintAbyssToken() {
             functionName: 'mint',
             args: [action],
             account,
+            value: parseUnits("0.002", 18)
         });
         console.log('Transaction sent:', hash);
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
         console.log('"mint" transaction confirmed in block', receipt.blockNumber);
         const logs = parseEventLogs({abi, eventName: "Reroll", logs: receipt.logs});
         const { tokenId } = logs[0].args;
-  
+
         return tokenId;
     } catch (error) {
         console.error('Error executing multicall:', error);
@@ -60,7 +79,7 @@ async function mintAbyssToken() {
 async function mintAndRerollToken() {
     const tokenId = await mintAbyssToken();
 
-    try {      
+    try {
         const hash = await walletClient.writeContract({
             address: abyssAddress,
             abi: abi,

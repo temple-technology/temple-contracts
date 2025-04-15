@@ -4,10 +4,11 @@ pragma solidity ^0.8.27;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
 import "./interfaces/IERC4671.sol";
 
-contract SoulboundNFT is ERC721, Ownable2Step, IERC4671 {
+contract SoulboundNFT is ERC721, Ownable2Step, Pausable, IERC4671 {
     uint256 private _tokenIdsCount;
     string private _baseTokenURI;
 
@@ -36,7 +37,7 @@ contract SoulboundNFT is ERC721, Ownable2Step, IERC4671 {
      * @notice Mints a soulbound NFT to the caller.
      * @dev A user can only mint one soulbound token.
      */
-    function mint() external {
+    function mint() external whenNotPaused {
         if (balanceOf(msg.sender) > 0) revert AlreadyOwnsSoulboundToken();
         
         _tokenIdsCount += 1;
@@ -51,7 +52,7 @@ contract SoulboundNFT is ERC721, Ownable2Step, IERC4671 {
      * @param tokenId The ID of the token to be burned.
      * @dev Only the owner of the token can burn it.
      */
-    function burn(uint256 tokenId) external {
+    function burn(uint256 tokenId) external whenNotPaused {
         address owner = _requireOwned(tokenId);
         if (owner != msg.sender) revert Unauthorized();
         
@@ -94,6 +95,20 @@ contract SoulboundNFT is ERC721, Ownable2Step, IERC4671 {
     function setBaseURI(string memory baseURI) external onlyOwner {
         _baseTokenURI = baseURI;
         emit BaseURIUpdated(baseURI);
+    }
+
+    /**
+     * @notice Pauses minting and transfers
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /**
+     * @notice Unpauses/resumes minting and transfers
+     */
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     /**

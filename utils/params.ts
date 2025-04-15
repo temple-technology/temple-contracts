@@ -43,11 +43,11 @@ export function readDeploymentParams(chainId: number | undefined) :DeploymentPar
     const ignitionDir = path.join(__dirname, "../ignition/");
 
     let paramsFilePath = process.env.IGNITION_PARAMS_FILE || "";
-    if (paramsFilePath === "") {
+    if (paramsFilePath === "" || paramsFilePath === undefined) {
         let paramsFile = "local_params.json";
-        if (chainId === 11155111 || chainId === 421614) {
+        if (chainId === 11155111 || chainId === 421614 || chainId === 57054) {
             paramsFile = "testnet_params.json";
-        } else if (chainId == 42161) {
+        } else if (chainId === 42161 || chainId === 1 || chainId === 146) {
             paramsFile = "mainnet_params.json";
         }
         paramsFilePath = path.join(ignitionDir, paramsFile);

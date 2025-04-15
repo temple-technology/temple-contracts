@@ -10,6 +10,8 @@ import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "solady/src/utils/MerkleProofLib.sol";
 
 import "./SoulboundNFT.sol";
 
@@ -18,7 +20,8 @@ contract Abyss is Initializable,
     AccessControlUpgradeable,
     PausableUpgradeable,
     ERC2981Upgradeable,
-    Ownable2StepUpgradeable
+    Ownable2StepUpgradeable,
+    ReentrancyGuardUpgradeable
 {
     // Roles
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -26,6 +29,11 @@ contract Abyss is Initializable,
 
     uint256 private constant ACTION_MIN = 1;
     uint256 private constant ACTION_MAX = 3;
+    uint256 private constant MAX_FREE_MINTS = 5;
+    uint256 private constant MAX_ROYALTY_BASIS_POINTS = 2000;
+
+    /// @dev The Merkle Root
+    bytes32 private merkleRoot;
 
     string private _contractURI;
     string private _baseTokenURI;
@@ -35,6 +43,8 @@ contract Abyss is Initializable,
     uint256 public epoch; // Current epoch for minting
     SoulboundNFT public soulboundNFT;
     mapping(address => uint256) public lastMintEpoch;
+    /// @dev Mapping for already used free mint claims
+    mapping(address => uint256) private claimedFreeMint;
 
     // Royalties
     address public royaltyRecipient;
@@ -42,12 +52,13 @@ contract Abyss is Initializable,
 
     // Events
     event Epoch(uint256 indexed index, address indexed caller, string uri, uint256 blockTimestamp);
-    event NFTMinted(uint8 indexed action, address indexed caller, uint256 indexed tokenId, uint256 epoch);
+    event NFTMinted(uint8 indexed action, address indexed caller, uint256 indexed tokenId, uint256 epoch, uint256 paidFee);
     event RoyaltyInfoUpdated(address indexed recipient, uint256 basisPoints);
     event ContractURIUpdated(string newContractURI);
     event BaseURIUpdated(string newBaseURI);
     event MintFeeUpdated(uint256 newFee);
     event WithdrawFunds(address indexed owner, uint256 amount);
+    event SetMerkleRoot(bytes32 indexed newRoot, bytes32 indexed oldRoot);
     event RerollFeeUpdated(uint256 newFee);
     event Reroll(uint256 indexed tokenId, address indexed caller, uint256 indexed epoch);
 
@@ -58,8 +69,12 @@ contract Abyss is Initializable,
     error FailedMintRequirements();
     error InsufficientBalance();
     error WithdrawFailed();
-    error RerollFeeRequired();
     error Unauthorized();
+    error MintFeeRequired();
+    error MerkleRootNotSet();
+    error InvalidProof();
+    error FreeMintsExceeded();
+    error RerollFeeRequired();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -95,9 +110,11 @@ contract Abyss is Initializable,
         __AccessControl_init();
         __Pausable_init();
         __Ownable2Step_init();
+        __ReentrancyGuard_init();
 
         if (admin == address(0)) revert InvalidAddress();
         if (epochResetter == address(0)) revert InvalidAddress();
+        if (_royaltyRecipient == address(0)) revert InvalidAddress();
 
         _grantRole(DEFAULT_ADMIN_ROLE, owner);
         _grantRole(ADMIN_ROLE, admin);
@@ -108,6 +125,7 @@ contract Abyss is Initializable,
         royaltyBasisPoints = _royaltyBasisPoints;
         _contractURI = initContractURI;
         _baseTokenURI = baseURI;
+        mintFee = 2_000_000_000_000_000;
         epoch = 1;
 
         _transferOwnership(owner);
@@ -118,7 +136,9 @@ contract Abyss is Initializable,
      * @param uri The new epoch metadata URI.
      */
     function resetEpoch(string memory uri) external onlyRole(EPOCH_RESET_ROLE) {
-        epoch += 1;
+        unchecked {
+            epoch += 1;
+        }
         emit Epoch(epoch, msg.sender, uri, block.timestamp);
     }
 
@@ -141,10 +161,20 @@ contract Abyss is Initializable,
     }
 
     /**
+     * @param _root The Merkle Root
+     */
+    function setMerkleRoot(
+        bytes32 _root
+    ) external onlyRole(ADMIN_ROLE) {
+        emit SetMerkleRoot(_root, merkleRoot);
+        merkleRoot = _root;
+    }
+
+    /**
      * @dev Withdraws funds from the contract.
      * @param amount The amount to withdraw.
      */
-    function withdrawFunds(uint256 amount) external onlyRole(ADMIN_ROLE) {
+    function withdrawFunds(uint256 amount) external onlyRole(ADMIN_ROLE) nonReentrant {
         uint256 balance = address(this).balance;
         if (balance < amount) revert InsufficientBalance();
 
@@ -159,22 +189,46 @@ contract Abyss is Initializable,
      * @param action The action type associated with the mint.
      */
     function mint(uint8 action) external payable whenNotPaused {
-        if (
-            lastMintEpoch[msg.sender] >= epoch || 
-            !soulboundNFT.hasValid(msg.sender) || 
-            action < ACTION_MIN || action > ACTION_MAX || 
-            msg.value < mintFee
-            ) {
-            revert FailedMintRequirements();
+        if (msg.value < mintFee) {
+            revert MintFeeRequired();
         }
 
         receivedFees += msg.value;
+        _mint(action);
+    }
+
+    /**
+     * @dev Same as mint function above, but this allows free mint for allow-list of addresses
+     * @param action The action type associated with the mint.
+     * @param _proof merkle proof
+     */
+    function mint(uint8 action, bytes32[] calldata _proof) external payable whenNotPaused {
+        if (merkleRoot == bytes32(0)) revert MerkleRootNotSet();
+
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(_msgSender()))));
+        if (!MerkleProofLib.verify(_proof, merkleRoot, leaf)) revert InvalidProof();
+        if (claimedFreeMint[msg.sender] >= MAX_FREE_MINTS) revert FreeMintsExceeded();
+
+        unchecked {
+            ++claimedFreeMint[msg.sender];
+        }
+        _mint(action);
+    }
+
+    function _mint(uint8 action) internal {
+        if (
+            lastMintEpoch[msg.sender] >= epoch || 
+            !soulboundNFT.hasValid(msg.sender) || 
+            action < ACTION_MIN || action > ACTION_MAX
+            ) {
+            revert FailedMintRequirements();
+        }
 
         uint256 tokenId = totalSupply() + 1;
         lastMintEpoch[msg.sender] = epoch;
         _safeMint(msg.sender, tokenId);
 
-        emit NFTMinted(action, msg.sender, tokenId, epoch);
+        emit NFTMinted(action, msg.sender, tokenId, epoch, msg.value);
     }
 
     /**
@@ -194,6 +248,12 @@ contract Abyss is Initializable,
 
     function _update(address to, uint256 tokenId, address auth) internal virtual override whenNotPaused returns (address) {
         return super._update(to, tokenId, auth);
+    }
+
+    function hasRemainingFreeMints(address user, bytes32[] calldata _proof) external view returns (bool) {
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(user))));
+
+        return MerkleProofLib.verify(_proof, merkleRoot, leaf) && claimedFreeMint[user] < MAX_FREE_MINTS;
     }
 
     /**
@@ -254,7 +314,7 @@ contract Abyss is Initializable,
      */
     function setRoyaltyInfo(address _recipient, uint256 _basisPoints) external onlyRole(ADMIN_ROLE) {
         if (_recipient == address(0)) revert InvalidRoyaltyRecipient();
-        if (_basisPoints > 10_000) revert RoyaltyBasisPointsExceedMax();
+        if (_basisPoints > MAX_ROYALTY_BASIS_POINTS) revert RoyaltyBasisPointsExceedMax();
 
         royaltyRecipient = _recipient;
         royaltyBasisPoints = _basisPoints;
