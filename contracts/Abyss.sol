@@ -39,7 +39,7 @@ contract Abyss is Initializable,
     string private _baseTokenURI;
     uint256 public receivedFees;
     uint256 public mintFee;
-    uint256 public rerollFee;
+    uint256 public alchemyFee;
     uint256 public epoch; // Current epoch for minting
     SoulboundNFT public soulboundNFT;
     mapping(address => uint256) public lastMintEpoch;
@@ -59,8 +59,8 @@ contract Abyss is Initializable,
     event MintFeeUpdated(uint256 newFee);
     event WithdrawFunds(address indexed owner, uint256 amount);
     event SetMerkleRoot(bytes32 indexed newRoot, bytes32 indexed oldRoot);
-    event RerollFeeUpdated(uint256 newFee);
-    event Reroll(uint256 indexed tokenId, address indexed caller, uint256 indexed epoch);
+    event AlchemyFeeUpdated(uint256 newFee);
+    event Alchemy(uint8 indexed action, address indexed caller, uint256 indexed tokenId, uint256 epoch, uint256 paidFee, uint256 burnedToken1, uint256 burnedToken2);
 
     // Errors
     error InvalidAddress();
@@ -74,7 +74,8 @@ contract Abyss is Initializable,
     error MerkleRootNotSet();
     error InvalidProof();
     error FreeMintsExceeded();
-    error RerollFeeRequired();
+    error AlchemyFeeRequired();
+    error InvalidAlchemyTokens();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -126,6 +127,8 @@ contract Abyss is Initializable,
         _contractURI = initContractURI;
         _baseTokenURI = baseURI;
         mintFee = 2_000_000_000_000_000;
+        alchemyFee = 2_000_000_000_000_000;
+
         epoch = 1;
 
         _transferOwnership(owner);
@@ -155,9 +158,9 @@ contract Abyss is Initializable,
      * @dev Sets the reroll fee.
      * @param _newFee The new reroll fee.
      */
-    function setRerollFee(uint256 _newFee) external onlyRole(ADMIN_ROLE) {
-        rerollFee = _newFee;
-        emit RerollFeeUpdated(_newFee);
+    function setAlchemyFee(uint256 _newFee) external onlyRole(ADMIN_ROLE) {
+        alchemyFee = _newFee;
+        emit AlchemyFeeUpdated(_newFee);
     }
 
     /**
@@ -215,7 +218,7 @@ contract Abyss is Initializable,
         _mint(action);
     }
 
-    function _mint(uint8 action) internal {
+    function _mint(uint8 action) internal returns (uint256) {
         if (
             lastMintEpoch[msg.sender] >= epoch || 
             !soulboundNFT.hasValid(msg.sender) || 
@@ -229,21 +232,28 @@ contract Abyss is Initializable,
         _safeMint(msg.sender, tokenId);
 
         emit NFTMinted(action, msg.sender, tokenId, epoch, msg.value);
+        return tokenId;
     }
 
     /**
-     * @dev reroll allows recreating the cards associated with an already minted NFT
-     * @param tokenId Id of the NFT to reroll
+     * @dev Mint a new NFT after burning 2 existing NFT cards
+     * @param token1Id Id of an NFT to burn
+     * @param token2Id Id of a second NFT to burn
      */
-    function reroll(uint256 tokenId) external payable whenNotPaused {
-        if (_ownerOf(tokenId) != msg.sender) revert Unauthorized();
+    function alchemy(uint8 action, uint256 token1Id, uint256 token2Id) external payable whenNotPaused {
+        if (token1Id == token2Id) revert InvalidAlchemyTokens();
+        if (_ownerOf(token1Id) != msg.sender || _ownerOf(token2Id) != msg.sender) revert Unauthorized();
 
-        if (msg.value < rerollFee) {
-            revert RerollFeeRequired();
+        if (msg.value < alchemyFee) {
+            revert AlchemyFeeRequired();
         }
 
         receivedFees += msg.value;
-        emit Reroll(tokenId, msg.sender, epoch);
+
+        _burn(token1Id);
+        _burn(token2Id);
+        uint256 newTokenId = _mint(action);
+        emit Alchemy(action, msg.sender, newTokenId, epoch, msg.value, token1Id, token2Id);
     }
 
     function _update(address to, uint256 tokenId, address auth) internal virtual override whenNotPaused returns (address) {
