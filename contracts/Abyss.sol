@@ -37,6 +37,8 @@ contract Abyss is Initializable,
 
     string private _contractURI;
     string private _baseTokenURI;
+    bool public debugMode;
+    uint256 private nextTokenId;
     uint256 public receivedFees;
     uint256 public mintFee;
     uint256 public alchemyFee;
@@ -60,7 +62,7 @@ contract Abyss is Initializable,
     event WithdrawFunds(address indexed owner, uint256 amount);
     event SetMerkleRoot(bytes32 indexed newRoot, bytes32 indexed oldRoot);
     event AlchemyFeeUpdated(uint256 newFee);
-    event Alchemy(uint8 indexed action, address indexed caller, uint256 indexed tokenId, uint256 epoch, uint256 paidFee, uint256 burnedToken1, uint256 burnedToken2);
+    event Alchemy(address indexed caller, uint256 indexed tokenId, uint256 indexed epoch, uint256 paidFee, uint256 burnedToken1, uint256 burnedToken2);
 
     // Errors
     error InvalidAddress();
@@ -128,10 +130,17 @@ contract Abyss is Initializable,
         _baseTokenURI = baseURI;
         mintFee = 2_000_000_000_000_000;
         alchemyFee = 2_000_000_000_000_000;
-
+        nextTokenId = 1;
         epoch = 1;
+        debugMode = false;
 
         _transferOwnership(owner);
+    }
+
+    function postUpgrade() external onlyRole(ADMIN_ROLE) {
+        if (nextTokenId <= 1 && totalSupply() > 0) {
+            nextTokenId = totalSupply() + 1;
+        }
     }
 
     /**
@@ -155,8 +164,8 @@ contract Abyss is Initializable,
     }
 
     /**
-     * @dev Sets the reroll fee.
-     * @param _newFee The new reroll fee.
+     * @dev Sets the Alchemy fee.
+     * @param _newFee The new Alchemy fee.
      */
     function setAlchemyFee(uint256 _newFee) external onlyRole(ADMIN_ROLE) {
         alchemyFee = _newFee;
@@ -197,7 +206,7 @@ contract Abyss is Initializable,
         }
 
         receivedFees += msg.value;
-        _mint(action);
+        _mintWithAction(action);
     }
 
     /**
@@ -215,34 +224,41 @@ contract Abyss is Initializable,
         unchecked {
             ++claimedFreeMint[msg.sender];
         }
-        _mint(action);
+        _mintWithAction(action);
     }
 
-    function _mint(uint8 action) internal returns (uint256) {
+    function _mintWithAction(uint8 action) internal {
         if (
-            lastMintEpoch[msg.sender] >= epoch || 
+            (lastMintEpoch[msg.sender] >= epoch && !debugMode) ||
             !soulboundNFT.hasValid(msg.sender) || 
             action < ACTION_MIN || action > ACTION_MAX
             ) {
             revert FailedMintRequirements();
         }
 
-        uint256 tokenId = totalSupply() + 1;
         lastMintEpoch[msg.sender] = epoch;
-        _safeMint(msg.sender, tokenId);
-
+        uint256 tokenId = _mintWithNoChecks();
         emit NFTMinted(action, msg.sender, tokenId, epoch, msg.value);
-        return tokenId;
     }
+
+    function _mintWithNoChecks() internal returns (uint256) {
+        uint256 tokenId = nextTokenId++;
+        _safeMint(msg.sender, tokenId);
+        return tokenId;
+    } 
 
     /**
      * @dev Mint a new NFT after burning 2 existing NFT cards
      * @param token1Id Id of an NFT to burn
      * @param token2Id Id of a second NFT to burn
      */
-    function alchemy(uint8 action, uint256 token1Id, uint256 token2Id) external payable whenNotPaused {
-        if (token1Id == token2Id) revert InvalidAlchemyTokens();
-        if (_ownerOf(token1Id) != msg.sender || _ownerOf(token2Id) != msg.sender) revert Unauthorized();
+    function alchemy(uint256 token1Id, uint256 token2Id) external payable whenNotPaused {
+        if (token1Id == token2Id || 
+            _ownerOf(token1Id) != msg.sender || 
+            _ownerOf(token2Id) != msg.sender
+            ) {
+            revert InvalidAlchemyTokens();
+        }
 
         if (msg.value < alchemyFee) {
             revert AlchemyFeeRequired();
@@ -252,8 +268,8 @@ contract Abyss is Initializable,
 
         _burn(token1Id);
         _burn(token2Id);
-        uint256 newTokenId = _mint(action);
-        emit Alchemy(action, msg.sender, newTokenId, epoch, msg.value, token1Id, token2Id);
+        uint256 newTokenId = _mintWithNoChecks();
+        emit Alchemy(msg.sender, newTokenId, epoch, msg.value, token1Id, token2Id);
     }
 
     function _update(address to, uint256 tokenId, address auth) internal virtual override whenNotPaused returns (address) {
@@ -330,6 +346,10 @@ contract Abyss is Initializable,
         royaltyBasisPoints = _basisPoints;
 
         emit RoyaltyInfoUpdated(_recipient, _basisPoints);
+    }
+
+    function setDebugMode(bool _mode) external onlyRole(ADMIN_ROLE) {
+        debugMode = _mode;
     }
 
     /**
