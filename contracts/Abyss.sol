@@ -37,11 +37,8 @@ contract Abyss is Initializable,
 
     string private _contractURI;
     string private _baseTokenURI;
-    bool public debugMode;
-    uint256 private nextTokenId;
     uint256 public receivedFees;
     uint256 public mintFee;
-    uint256 public alchemyFee;
     uint256 public epoch; // Current epoch for minting
     SoulboundNFT public soulboundNFT;
     mapping(address => uint256) public lastMintEpoch;
@@ -78,6 +75,11 @@ contract Abyss is Initializable,
     error FreeMintsExceeded();
     error AlchemyFeeRequired();
     error InvalidAlchemyTokens();
+
+    bool public debugMode;
+    uint256 public alchemyFee;
+    uint256 public nextTokenId;
+    bytes32 public constant UPGRADE_ROLE = keccak256("UPGRADE_ROLE");
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -121,6 +123,7 @@ contract Abyss is Initializable,
 
         _grantRole(DEFAULT_ADMIN_ROLE, owner);
         _grantRole(ADMIN_ROLE, admin);
+        _grantRole(UPGRADE_ROLE, admin);
         _grantRole(EPOCH_RESET_ROLE, epochResetter);
 
         soulboundNFT = _soulboundNFT;
@@ -128,8 +131,8 @@ contract Abyss is Initializable,
         royaltyBasisPoints = _royaltyBasisPoints;
         _contractURI = initContractURI;
         _baseTokenURI = baseURI;
-        mintFee = 2_000_000_000_000_000;
-        alchemyFee = 2_000_000_000_000_000;
+        mintFee = 7_000_000_000_000_000_000;
+        alchemyFee = 4_000_000_000_000_000;
         nextTokenId = 1;
         epoch = 1;
         debugMode = false;
@@ -137,7 +140,7 @@ contract Abyss is Initializable,
         _transferOwnership(owner);
     }
 
-    function postUpgrade() external onlyRole(ADMIN_ROLE) {
+    function postUpgrade() external onlyRole(UPGRADE_ROLE) {
         if (nextTokenId <= 1 && totalSupply() > 0) {
             nextTokenId = totalSupply() + 1;
         }
@@ -383,6 +386,6 @@ contract Abyss is Initializable,
      * @return The contract version.
      */
     function version() public pure virtual returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 }

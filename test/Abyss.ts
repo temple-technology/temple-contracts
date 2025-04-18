@@ -48,7 +48,7 @@ describe("Abyss", function () {
     const initialEpoch = await contract.read.epoch();
     const royaltyRecipient = await contract.read.royaltyRecipient();
     const royaltyBasisPoints = await contract.read.royaltyBasisPoints();
-    const mintFee = parseUnits("0.002", 18);
+    const mintFee = parseUnits("7", 18);
 
     expect(name).to.equal("Abyss NFT");
     expect(symbol).to.equal("ABYSS");
