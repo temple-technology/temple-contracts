@@ -58,6 +58,8 @@ contract Abyss is Initializable,
     event MintFeeUpdated(uint256 newFee);
     event WithdrawFunds(address indexed owner, uint256 amount);
     event SetMerkleRoot(bytes32 indexed newRoot, bytes32 indexed oldRoot);
+    event AlchemyFeeUpdated(uint256 newFee);
+    event Alchemy(address indexed caller, uint256 indexed tokenId, uint256 indexed epoch, uint256 paidFee, uint256 burnedToken1, uint256 burnedToken2);
 
     // Errors
     error InvalidAddress();
@@ -71,6 +73,13 @@ contract Abyss is Initializable,
     error MerkleRootNotSet();
     error InvalidProof();
     error FreeMintsExceeded();
+    error AlchemyFeeRequired();
+    error InvalidAlchemyTokens();
+
+    bool public debugMode;
+    uint256 public alchemyFee;
+    uint256 public nextTokenId;
+    bytes32 public constant UPGRADE_ROLE = keccak256("UPGRADE_ROLE");
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -114,6 +123,7 @@ contract Abyss is Initializable,
 
         _grantRole(DEFAULT_ADMIN_ROLE, owner);
         _grantRole(ADMIN_ROLE, admin);
+        _grantRole(UPGRADE_ROLE, admin);
         _grantRole(EPOCH_RESET_ROLE, epochResetter);
 
         soulboundNFT = _soulboundNFT;
@@ -121,10 +131,19 @@ contract Abyss is Initializable,
         royaltyBasisPoints = _royaltyBasisPoints;
         _contractURI = initContractURI;
         _baseTokenURI = baseURI;
-        mintFee = 2_000_000_000_000_000;
+        mintFee = 7_000_000_000_000_000_000;
+        alchemyFee = 4_000_000_000_000_000;
+        nextTokenId = 1;
         epoch = 1;
+        debugMode = false;
 
         _transferOwnership(owner);
+    }
+
+    function postUpgrade() external onlyRole(UPGRADE_ROLE) {
+        if (nextTokenId <= 1 && totalSupply() > 0) {
+            nextTokenId = totalSupply() + 1;
+        }
     }
 
     /**
@@ -148,7 +167,16 @@ contract Abyss is Initializable,
     }
 
     /**
-     * @param _root The Merkle Root 
+     * @dev Sets the Alchemy fee.
+     * @param _newFee The new Alchemy fee.
+     */
+    function setAlchemyFee(uint256 _newFee) external onlyRole(ADMIN_ROLE) {
+        alchemyFee = _newFee;
+        emit AlchemyFeeUpdated(_newFee);
+    }
+
+    /**
+     * @param _root The Merkle Root
      */
     function setMerkleRoot(
         bytes32 _root
@@ -181,7 +209,7 @@ contract Abyss is Initializable,
         }
 
         receivedFees += msg.value;
-        _mint(action);
+        _mintWithAction(action);
     }
 
     /**
@@ -199,23 +227,52 @@ contract Abyss is Initializable,
         unchecked {
             ++claimedFreeMint[msg.sender];
         }
-        _mint(action);
+        _mintWithAction(action);
     }
 
-    function _mint(uint8 action) internal {
+    function _mintWithAction(uint8 action) internal {
         if (
-            lastMintEpoch[msg.sender] >= epoch || 
+            (lastMintEpoch[msg.sender] >= epoch && !debugMode) ||
             !soulboundNFT.hasValid(msg.sender) || 
             action < ACTION_MIN || action > ACTION_MAX
             ) {
             revert FailedMintRequirements();
         }
 
-        uint256 tokenId = totalSupply() + 1;
         lastMintEpoch[msg.sender] = epoch;
-        _safeMint(msg.sender, tokenId);
-
+        uint256 tokenId = _mintWithNoChecks();
         emit NFTMinted(action, msg.sender, tokenId, epoch, msg.value);
+    }
+
+    function _mintWithNoChecks() internal returns (uint256) {
+        uint256 tokenId = nextTokenId++;
+        _safeMint(msg.sender, tokenId);
+        return tokenId;
+    } 
+
+    /**
+     * @dev Mint a new NFT after burning 2 existing NFT cards
+     * @param token1Id Id of an NFT to burn
+     * @param token2Id Id of a second NFT to burn
+     */
+    function alchemy(uint256 token1Id, uint256 token2Id) external payable whenNotPaused {
+        if (token1Id == token2Id || 
+            _ownerOf(token1Id) != msg.sender || 
+            _ownerOf(token2Id) != msg.sender
+            ) {
+            revert InvalidAlchemyTokens();
+        }
+
+        if (msg.value < alchemyFee) {
+            revert AlchemyFeeRequired();
+        }
+
+        receivedFees += msg.value;
+
+        _burn(token1Id);
+        _burn(token2Id);
+        uint256 newTokenId = _mintWithNoChecks();
+        emit Alchemy(msg.sender, newTokenId, epoch, msg.value, token1Id, token2Id);
     }
 
     function _update(address to, uint256 tokenId, address auth) internal virtual override whenNotPaused returns (address) {
@@ -223,7 +280,7 @@ contract Abyss is Initializable,
     }
 
     function hasRemainingFreeMints(address user, bytes32[] calldata _proof) external view returns (bool) {
-        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(user))));     
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(user))));
 
         return MerkleProofLib.verify(_proof, merkleRoot, leaf) && claimedFreeMint[user] < MAX_FREE_MINTS;
     }
@@ -294,6 +351,10 @@ contract Abyss is Initializable,
         emit RoyaltyInfoUpdated(_recipient, _basisPoints);
     }
 
+    function setDebugMode(bool _mode) external onlyRole(ADMIN_ROLE) {
+        debugMode = _mode;
+    }
+
     /**
      * @dev Pauses minting and transfers.
      */
@@ -325,6 +386,6 @@ contract Abyss is Initializable,
      * @return The contract version.
      */
     function version() public pure virtual returns (string memory) {
-        return "1.0.0";
+        return "1.0.1";
     }
 }

@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
-import { checksumAddress, parseUnits } from "viem";
+import { checksumAddress, parseUnits, zeroAddress } from "viem";
 import hre from "hardhat";
 import AbyssProxyModule from "../ignition/modules/Abyss";
 
@@ -36,7 +36,7 @@ describe("Abyss", function () {
     const contract = deployment.abyss;
     const soulboundNFT = deployment.soulNFT;
     await soulboundNFT.write.mint({account: user1.account});
-    
+
     return { contract, soulboundNFT, deployer, admin, user1, user2, resetter, publicClient };
   }
 
@@ -48,7 +48,7 @@ describe("Abyss", function () {
     const initialEpoch = await contract.read.epoch();
     const royaltyRecipient = await contract.read.royaltyRecipient();
     const royaltyBasisPoints = await contract.read.royaltyBasisPoints();
-    const mintFee = parseUnits("0.002", 18);
+    const mintFee = parseUnits("7", 18);
 
     expect(name).to.equal("Abyss NFT");
     expect(symbol).to.equal("ABYSS");
@@ -148,7 +148,7 @@ describe("Abyss", function () {
     await expect(contract.write.pause({ account: admin.account }))
       .to.emit(contract, "Paused")
       .withArgs(checksumAddress(admin.account.address));
-    
+
     expect(await contract.read.paused()).to.be.equal(true);
 
     // Attempt to mint while paused
@@ -403,11 +403,88 @@ describe("Abyss", function () {
     // free mint should fail now
     await expect(contract.write.mint([action, proof], { account: user1.account}))
       .to.be.revertedWithCustomError({abi: contract.abi}, "FreeMintsExceeded");
-    
+
     // mint with fee should work for this user
     await expect(contract.write.mint([action], { account: user1.account, value: newMintFee }))
       .to.emit(contract, "NFTMinted")
       .withArgs(action, checksumAddress(user1.account.address), 6, 6, newMintFee);
+
+  });
+
+  it("Should mint using the Alchemy feature to bypass the epoch restrictions", async function () {
+    const { contract, admin, user1, user2, resetter } = await loadFixture(deployContracts);
+    const alchemyFee = BigInt(0);
+    await contract.write.setAlchemyFee([alchemyFee], { account: admin.account });
+    await contract.write.setMintFee([alchemyFee], { account: admin.account });
+
+    // mint a few tokens to use in testing the alchemy function
+    const action = 1;
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+    await contract.write.resetEpoch(["epoch 2"], { account: resetter.account });
+    
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+    await contract.write.resetEpoch(["epoch 3"], { account: resetter.account });
+    
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+    await contract.write.resetEpoch(["epoch 4"], { account: resetter.account });
+    
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+    await contract.write.resetEpoch(["epoch 5"], { account: resetter.account });
+    
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+    await contract.write.resetEpoch(["epoch 6"], { account: resetter.account });
+    
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+    // await contract.write.resetEpoch(["epoch 2"], { account: resetter.account });
+
+    // alchemy-reroll in same epoch without fee
+    await expect(contract.write.alchemy([BigInt(1), BigInt(2)], { account: user1.account }))
+      .to.emit(contract, "Alchemy")
+      .withArgs(checksumAddress(user1.account.address), 7, 6, 0, 1, 2);
+    // using the same tokens again should fail
+    await expect(contract.write.alchemy([BigInt(1), BigInt(2)], { account: user1.account }))
+      .to.be.revertedWithCustomError({ abi: contract.abi }, "InvalidAlchemyTokens");
+
+    // reroll again in the same epoch with unburned tokens
+    await expect(contract.write.alchemy([BigInt(4), BigInt(3)], { account: user1.account }))
+      .to.emit(contract, "Alchemy")
+      .withArgs(checksumAddress(user1.account.address), 8, 6, 0, 4, 3);
+
+    // update reroll fee
+    const newRerollFee = parseUnits("0.00035", 18);
+    await contract.write.setAlchemyFee([newRerollFee], { account: admin.account });
+
+    // reroll without fee should fail
+    await expect(contract.write.alchemy([BigInt(5), BigInt(6)], { account: user1.account }))
+      .to.be.revertedWithCustomError( { abi: contract.abi }, "AlchemyFeeRequired");
+    await expect(contract.write.alchemy([BigInt(5), BigInt(6)], { account: user1.account, value: parseUnits("0.00031", 18) }))
+      .to.be.revertedWithCustomError( { abi: contract.abi }, "AlchemyFeeRequired");
+
+    // reroll submitted from non-token-owner account should fail
+    await expect(contract.write.alchemy([BigInt(5), BigInt(6)], { account: user2.account, value: newRerollFee }))
+      .to.be.revertedWithCustomError( { abi: contract.abi }, "InvalidAlchemyTokens");
+
+      // reroll with the required fee and token owner should succeed
+    await expect(contract.write.alchemy([BigInt(5), BigInt(6)], { account: user1.account, value: newRerollFee }))
+      .to.emit(contract, "Alchemy")
+      .withArgs(checksumAddress(user1.account.address), 9, 6, newRerollFee, 5, 6)
+      .to.emit(contract, "Transfer")
+      .withArgs(checksumAddress(user1.account.address), zeroAddress, 5);
+
+    // mint new tokens
+    await contract.write.resetEpoch(["epoch 7"], { account: resetter.account });
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+    await contract.write.resetEpoch(["epoch 8"], { account: resetter.account });
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+    await contract.write.resetEpoch(["epoch 9"], { account: resetter.account });
+    await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+    await contract.write.resetEpoch(["epoch 10"], { account: resetter.account });
+    // await contract.write.mint([action], { account: user1.account, value: BigInt(0)})
+
+    // reroll in future epochs should succeed
+    await expect(contract.write.alchemy([BigInt(10), BigInt(11)], { account: user1.account, value: newRerollFee }))
+      .to.emit(contract, "Alchemy")
+      .withArgs(checksumAddress(user1.account.address), 13, 10, newRerollFee, 10, 11);
 
   });
 
