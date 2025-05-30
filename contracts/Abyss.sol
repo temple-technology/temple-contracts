@@ -285,6 +285,10 @@ contract Abyss is Initializable,
         return MerkleProofLib.verify(_proof, merkleRoot, leaf) && claimedFreeMint[user] < MAX_FREE_MINTS;
     }
 
+    function tokenOwner(uint256 tokenId) external view returns (address) {
+        return _ownerOf(tokenId);
+    }
+
     /**
      * @dev Returns the contract URI.
      */

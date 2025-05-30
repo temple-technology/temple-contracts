@@ -65,7 +65,7 @@ const walletClient = createWalletClient({
     transport: http(),
 });
 
-async function rerollToken(token1d: number, token2Id: number) {
+async function rerollToken(token1Id: number, token2Id: number) {
     try {
         const hash = await walletClient.writeContract({
             address: abyssAddress,
