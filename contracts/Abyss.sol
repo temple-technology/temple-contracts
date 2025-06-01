@@ -60,6 +60,7 @@ contract Abyss is Initializable,
     event SetMerkleRoot(bytes32 indexed newRoot, bytes32 indexed oldRoot);
     event AlchemyFeeUpdated(uint256 newFee);
     event Alchemy(address indexed caller, uint256 indexed tokenId, uint256 indexed epoch, uint256 paidFee, uint256 burnedToken1, uint256 burnedToken2);
+    event SetEpochMintCap(uint256 indexed cap, uint256 indexed epoch);
 
     // Errors
     error InvalidAddress();
@@ -217,6 +218,10 @@ contract Abyss is Initializable,
         emit WithdrawFunds(msg.sender, amount);
     }
 
+    function canMint(uint8 action, address minter) external view returns(bool) {
+        return _checkMintRequirements(action, minter) == 0;
+    }
+
     /**
      * @dev Mints a new NFT, enforcing epoch and soulbound token requirements.
      * @param action The action type associated with the mint.
@@ -261,7 +266,7 @@ contract Abyss is Initializable,
         emit NFTMinted(action, msg.sender, tokenId, epoch, msg.value);
     }
 
-    function _checkMintRequirements(uint8 action, address minter) internal returns(uint8) {
+    function _checkMintRequirements(uint8 action, address minter) internal view returns(uint8) {
         if (
             (lastMintEpoch[minter] >= epoch && !debugMode) ||
             !soulboundNFT.hasValid(minter) ||
@@ -273,10 +278,6 @@ contract Abyss is Initializable,
         if (nextTokenId > (epochStartToken + epochMintCap - 1)) return 2;
 
         return 0;
-    }
-
-    function canMint(uint8 action, address minter) external view returns(bool) {
-        return _checkMintRequirements(action, minter) == 0;
     }
 
     function _mintWithNoChecks() internal returns (uint256) {
@@ -320,6 +321,7 @@ contract Abyss is Initializable,
         if (cap > 1000000) revert InvalidMintCap();
 
         epochMintCap = cap;
+        emit SetEpochMintCap(cap, epoch);
     }
 
     function remainingEpochMints() external view returns (uint256) {
