@@ -135,7 +135,7 @@ describe("Abyss", function () {
       .withArgs(action, checksumAddress(user1.account.address), tokenId, 2, 0);
   });
 
-  it("Should handle pausing and unpausing minting and transfers", async function () {
+  it("Should handle pausing and unpausing the mint function.", async function () {
     const { contract, soulboundNFT, admin, user1, user2 } = await loadFixture(deployContracts);
     await contract.write.setMintFee([BigInt(0)], { account: admin.account })
 
@@ -155,9 +155,10 @@ describe("Abyss", function () {
     await expect(contract.write.mint([1], { account: user2.account }))
       .to.be.revertedWithCustomError({abi: contract.abi}, "EnforcedPause");
 
-    // transfer should be paused as well
+    // transfer should still work while paused
     await expect(contract.write.transferFrom([user1.account.address, user2.account.address, BigInt(1)], { account: user1.account }))
-      .to.be.revertedWithCustomError({abi: contract.abi}, "EnforcedPause");
+      .to.emit(contract, "Transfer")
+      .withArgs(checksumAddress(user1.account.address), checksumAddress(user2.account.address), 1);
 
     // Unpause the contract
     await expect(contract.write.unpause({ account: admin.account }))
@@ -169,12 +170,6 @@ describe("Abyss", function () {
     await expect(contract.write.mint([1], { account: user2.account }))
       .to.emit(contract, "NFTMinted")
       .withArgs(1,  checksumAddress(user2.account.address), 2, 1, 0);
-
-    // transfer should work now
-    await expect(contract.write.transferFrom(
-      [user1.account.address, user2.account.address, BigInt(1)], { account: user1.account }
-    )).to.emit(contract, "Transfer")
-      .withArgs(checksumAddress(user1.account.address), checksumAddress(user2.account.address), 1);
 
   });
 
@@ -286,6 +281,39 @@ describe("Abyss", function () {
     
     const updatedFee = await contract.read.mintFee();
     expect(updatedFee).to.equal(newMintFee);
+  });
+
+  it("should allow the admin to update the global epoch mint cap", async function () {
+    const { contract, admin, user1, publicClient, resetter } = await loadFixture(deployContracts);
+    const newMintFee = parseUnits("0.00035", 18);
+    await contract.write.setMintFee([newMintFee], { account: admin.account });
+    
+    await expect(contract.write.setEpochMintCap([BigInt(1)], { account: admin.account }))
+        .to.emit(contract, "SetEpochMintCap")
+        .withArgs(1, 1);
+    
+    const cap = await contract.read.remainingEpochMints();
+    expect(cap).to.equal(BigInt(1));
+
+    // mint one token
+    await expect(contract.write.mint([1], { account: user1.account, value: newMintFee}))
+      .to.emit(contract, "NFTMinted")
+      .withArgs(1, checksumAddress(user1.account.address), 1, 1, newMintFee);
+    // Remaining mints should be zero for the current epoch
+    expect(await contract.read.remainingEpochMints()).to.equal(BigInt(0));
+  
+    // reset epoch, then verify that remaining mints is = to the mint cap
+    await contract.write.resetEpoch(["epoch 2"], { account: resetter.account });
+    expect(await contract.read.remainingEpochMints()).to.equal(BigInt(1));
+    // set mint cap to zero to disable minting regardless of epoch
+    await expect(contract.write.setEpochMintCap([BigInt(0)], { account: admin.account }))
+      .to.emit(contract, "SetEpochMintCap")
+      .withArgs(0, 2);
+    // now try to mint, should fail 
+    await expect(contract.write.mint([1], { account: user1.account, value: newMintFee}))
+      .to.be.revertedWithCustomError( {abi: contract.abi}, "EpochMintCapExceeded");
+
+
   });
 
   it("Should mint with the required mint fee", async function () {

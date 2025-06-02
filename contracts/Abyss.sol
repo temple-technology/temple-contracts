@@ -60,6 +60,7 @@ contract Abyss is Initializable,
     event SetMerkleRoot(bytes32 indexed newRoot, bytes32 indexed oldRoot);
     event AlchemyFeeUpdated(uint256 newFee);
     event Alchemy(address indexed caller, uint256 indexed tokenId, uint256 indexed epoch, uint256 paidFee, uint256 burnedToken1, uint256 burnedToken2);
+    event SetEpochMintCap(uint256 indexed cap, uint256 indexed epoch);
 
     // Errors
     error InvalidAddress();
@@ -75,11 +76,16 @@ contract Abyss is Initializable,
     error FreeMintsExceeded();
     error AlchemyFeeRequired();
     error InvalidAlchemyTokens();
+    error EpochMintCapExceeded();
+    error InvalidMintCap();
+    error MissingAdminOrUpgradeRole();
 
     bool public debugMode;
     uint256 public alchemyFee;
     uint256 public nextTokenId;
     bytes32 public constant UPGRADE_ROLE = keccak256("UPGRADE_ROLE");
+    uint256 private epochStartToken;
+    uint256 public epochMintCap; // Maximum mints per epoch
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -136,13 +142,25 @@ contract Abyss is Initializable,
         nextTokenId = 1;
         epoch = 1;
         debugMode = false;
+        epochStartToken = 1;
+        epochMintCap = 3333;
 
         _transferOwnership(owner);
     }
 
-    function postUpgrade() external onlyRole(UPGRADE_ROLE) {
+    modifier onlyAdminOrUpgradeRoles() {
+        if (!hasRole(ADMIN_ROLE, msg.sender) && !hasRole(UPGRADE_ROLE, msg.sender)) {
+            revert MissingAdminOrUpgradeRole();
+        }
+        _;
+    }
+
+    function postUpgrade() external onlyAdminOrUpgradeRoles {
         if (nextTokenId <= 1 && totalSupply() > 0) {
             nextTokenId = totalSupply() + 1;
+        }
+        if (epochStartToken < 1) {
+            epochStartToken = nextTokenId;
         }
     }
 
@@ -154,6 +172,7 @@ contract Abyss is Initializable,
         unchecked {
             epoch += 1;
         }
+        epochStartToken = nextTokenId;
         emit Epoch(epoch, msg.sender, uri, block.timestamp);
     }
 
@@ -199,6 +218,10 @@ contract Abyss is Initializable,
         emit WithdrawFunds(msg.sender, amount);
     }
 
+    function canMint(uint8 action, address minter) external view returns(bool) {
+        return _checkMintRequirements(action, minter) == 0;
+    }
+
     /**
      * @dev Mints a new NFT, enforcing epoch and soulbound token requirements.
      * @param action The action type associated with the mint.
@@ -231,17 +254,30 @@ contract Abyss is Initializable,
     }
 
     function _mintWithAction(uint8 action) internal {
-        if (
-            (lastMintEpoch[msg.sender] >= epoch && !debugMode) ||
-            !soulboundNFT.hasValid(msg.sender) || 
-            action < ACTION_MIN || action > ACTION_MAX
-            ) {
+        uint8 r = _checkMintRequirements(action, msg.sender);
+        if (r == 1) {
             revert FailedMintRequirements();
+        } else if (r == 2) {
+            revert EpochMintCapExceeded();
         }
 
         lastMintEpoch[msg.sender] = epoch;
         uint256 tokenId = _mintWithNoChecks();
         emit NFTMinted(action, msg.sender, tokenId, epoch, msg.value);
+    }
+
+    function _checkMintRequirements(uint8 action, address minter) internal view returns(uint8) {
+        if (
+            (lastMintEpoch[minter] >= epoch && !debugMode) ||
+            !soulboundNFT.hasValid(minter) ||
+            action < ACTION_MIN || action > ACTION_MAX
+        ) {
+            return 1;
+        }
+
+        if (nextTokenId > (epochStartToken + epochMintCap - 1)) return 2;
+
+        return 0;
     }
 
     function _mintWithNoChecks() internal returns (uint256) {
@@ -275,8 +311,22 @@ contract Abyss is Initializable,
         emit Alchemy(msg.sender, newTokenId, epoch, msg.value, token1Id, token2Id);
     }
 
-    function _update(address to, uint256 tokenId, address auth) internal virtual override whenNotPaused returns (address) {
+    function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address) {
         return super._update(to, tokenId, auth);
+    }
+
+    function setEpochMintCap(uint256 cap) external onlyRole(ADMIN_ROLE) {
+        // A cap of zero, disables minting with action
+        // This has no impact on the Alchemy minting
+        if (cap > 1000000) revert InvalidMintCap();
+
+        epochMintCap = cap;
+        emit SetEpochMintCap(cap, epoch);
+    }
+
+    function remainingEpochMints() external view returns (uint256) {
+        uint256 mintsThisEpoch =  nextTokenId - epochStartToken;
+        return epochMintCap - mintsThisEpoch;
     }
 
     function hasRemainingFreeMints(address user, bytes32[] calldata _proof) external view returns (bool) {
